@@ -20,11 +20,16 @@ AAA_manager/data/chat_history.jsonl
 AAA_manager/logs/*.log
 
 # === 个人面经与知识库（隐私数据） ===
-问题库/
-面试原始问题/
-面试复盘/
-个人情况/
-公司投递情况/
+问题库/*
+!问题库/.gitkeep
+面试原始问题/*
+!面试原始问题/.gitkeep
+面试复盘/*
+!面试复盘/.gitkeep
+个人情况/*
+!个人情况/.gitkeep
+公司投递情况/*
+!公司投递情况/.gitkeep
 暂时不用/
 信通院_*.md
 创新奇智_*.md
