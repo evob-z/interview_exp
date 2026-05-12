@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>面试助手</title>
+    <link rel="stylesheet" href="/style.css">
+    <!-- Markdown 渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- 代码高亮 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧：聊天区域 -->
+        <main class="chat-panel">
+            <header class="chat-header">
+                <h1 class="chat-title">面试助手</h1>
+                <button class="new-chat-btn" id="btnNewChat" title="新建对话">+ 新对话</button>
+                <div class="mode-switcher">
+                    <button class="mode-btn active" data-mode="interview">模拟面试</button>
+                    <button class="mode-btn" data-mode="explain">详细讲解</button>
+                    <button class="mode-btn" data-mode="quick">快速回答</button>
+                </div>
+            </header>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome-message">
+                    <div class="welcome-icon">💬</div>
+                    <h2>欢迎使用面试助手</h2>
+                    <p>输入面试相关问题，我会帮你准备答案。</p>
+                    <div class="welcome-tips">
+                        <span class="tip" data-question="什么是 ReAct？">什么是 ReAct？</span>
+                        <span class="tip" data-question="解释一下 RAG 的原理">RAG 的原理</span>
+                        <span class="tip" data-question="Python GIL 是什么？">Python GIL</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <div class="input-wrapper">
+                    <textarea id="chatInput" placeholder="输入你的问题... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
+                    <button class="voice-btn" id="btnVoice" title="语音输入">🎤</button>
+                    <button id="sendBtn" class="send-btn" title="发送">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 2L11 13"></path>
+                            <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- 右侧：信息面板 -->
+        <aside class="info-panel">
+            <!-- 统计卡片 -->
+            <div class="card" id="statsCard">
+                <div class="card-header" data-toggle="statsBody">
+                    <h3>📊 统计概览</h3>
+                    <span class="card-toggle">▾</span>
+                </div>
+                <div class="card-body" id="statsBody">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-value" id="statTotal">--</span>
+                            <span class="stat-label">题库总数</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="statInterviews">--</span>
+                            <span class="stat-label">面试次数</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="statApplications">--</span>
+                            <span class="stat-label">投递数量</span>
+                        </div>
+                    </div>
+                    <div class="stat-categories" id="statCategories">
+                        <!-- 动态填充分类 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 画像卡片 -->
+            <div class="card" id="profileCard">
+                <div class="card-header" data-toggle="profileBody">
+                    <h3>👤 个人画像</h3>
+                    <span class="card-toggle">▾</span>
+                </div>
+                <div class="card-body" id="profileBody">
+                    <div id="profileContent" style="display:none;">
+                        <p class="profile-brief" id="profileBrief"></p>
+                    </div>
+                    <div id="profileLoading" class="loading-placeholder">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 快捷操作 -->
+            <div class="card">
+                <div class="card-header" data-toggle="actionsBody">
+                    <h3>⚡ 快捷操作</h3>
+                    <span class="card-toggle">▾</span>
+                </div>
+                <div class="card-body" id="actionsBody">
+                    <div class="action-buttons">
+                        <button class="action-btn" id="btnSync" title="同步面试数据">
+                            🔄 触发同步
+                        </button>
+                        <button class="action-btn" id="btnAdvice" title="获取改进建议">
+                            💡 获取建议
+                        </button>
+                        <button class="action-btn" id="btnEncourage" title="来点鼓励">
+                            🎉 鼓励一下
+                        </button>
+                    </div>
+                    <div class="sync-status" id="syncStatus"></div>
+                </div>
+            </div>
+
+            <!-- 历史记录 -->
+            <div class="card" id="historyCard">
+                <div class="card-header" data-toggle="historyBody">
+                    <h3>📝 历史记录</h3>
+                    <span class="card-toggle">▾</span>
+                </div>
+                <div class="card-body" id="historyBody">
+                    <div class="history-list" id="historyList">
+                        <div class="loading-placeholder">加载中...</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- 移动端底部导航 -->
+    <nav class="mobile-nav">
+        <button class="mobile-nav-btn active" data-panel="chat">💬 问答</button>
+        <button class="mobile-nav-btn" data-panel="info">📊 面板</button>
+    </nav>
+
+    <script src="/app.js"></script>
+</body>
+</html>

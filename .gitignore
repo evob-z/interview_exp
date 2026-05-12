@@ -1,0 +1,54 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# === 环境与敏感信息 ===
+AAA_manager/.env
+.env
+
+# === 运行时数据 ===
+AAA_manager/data/user_profile.json
+AAA_manager/data/sessions/
+AAA_manager/data/chat_history.jsonl
+AAA_manager/logs/*.log
+
+# === 个人面经与知识库（隐私数据） ===
+问题库/
+面试原始问题/
+面试复盘/
+个人情况/
+公司投递情况/
+暂时不用/
+信通院_*.md
+创新奇智_*.md
+北京智能知识*.md
+珠海博贤_*.md
+美团_*.md
+蚂蚁_*.md
+.interview_dates.json
+
+# === 临时文件 ===
+temp/
+
+# === 项目规则（含本地路径） ===
+.rules
+
+# === IDE / 编辑器 ===
+.qoder/
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+Desktop.ini
