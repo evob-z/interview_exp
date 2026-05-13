@@ -28,8 +28,9 @@
 | 分层项目理解 | 4 层渐进式文档读取，智能构建项目上下文 | 问答时自动调用 |
 | 投递状态追踪 | Excel 颜色自动识别投递状态（红/橙/黄/绿） | Web 画像面板 |
 | 多轮截断 | 自动保留最近 N 轮对话，控制上下文长度 | 自动 |
+| 岗位针对性备战 | 面试前联网搜 JD → 结合简历项目 LLM 出题 → 写入 `岗位预测/` 且自动被模拟面试检索 | CLI `prepare` / Web · 🎯 岗位备战 |
 | 统计面板 | 题库统计、面试次数、投递情况汇总 | Web API |
-| CLI 命令集 | sync / detect / extract / archive / review | 命令行 |
+| CLI 命令集 | sync / detect / extract / archive / review / prepare | 命令行 |
 
 ---
 
@@ -164,6 +165,11 @@ python main.py review
 
 # 复盘指定文件，生成独立复盘文件到 面试复盘/ 目录
 python main.py review <file> --standalone
+
+# 面试前针对性备战：搜 JD + LLM 出题，写入 岗位预测/【自动入题库】
+python main.py prepare 字节跳动_AI应用开发实习生-AI数据与安全_260512
+# 或显式参数
+python main.py prepare --company 字节跳动 --position "AI应用开发实习生-AI数据与安全" --date 260512 --count 15
 ```
 
 ---
@@ -187,6 +193,8 @@ python main.py review <file> --standalone
 | `REVIEW_OUTPUT_DIR` | 复盘输出目录 | `面试复盘` |
 | `RESUME_DIR` | 简历所在目录 | `个人情况/简历` |
 | `COMPANY_EXCEL_PATH` | 投递记录 Excel 路径 | - |
+| `PREP_OUTPUT_DIR` | 岗位预测题库目录 | `岗位预测` |
+| `PREP_QUESTION_COUNT` | 岗位预测默认题数 | `15` |
 | `PROJECT_CONFIGS` | 项目文档配置（`名称:路径:文件;...`） | - |
 | `ENABLE_WEB_SEARCH` | 是否启用网络搜索 | `true` |
 | `SEARCH_API_KEY` | 搜索 API 密钥 | - |
@@ -218,6 +226,8 @@ python main.py review <file> --standalone
 | `/api/followup/result/{id}` | GET | 获取追问预测结果 |
 | `/api/asr/ws` | WebSocket | 语音识别（讯飞流式转写） |
 | `/api/sync/run` | POST | 触发全流程同步 |
+| `/api/prepare/run` | POST | 岗位针对性预测题生成（body: `{company, position, date?, count?}`） |
+| `/api/prepare/list` | GET | 列出已生成的岗位预测文件 |
 | `/api/sync/status` | GET | 获取同步状态 |
 | `/api/stats` | GET | 获取综合统计信息 |
 
@@ -272,3 +282,31 @@ python main.py review <file> --standalone
 | `FOLLOWUP_COUNT` | 追问预测生成数量 | `3` |
 
 > 以上开关在 `config.py` 中管理，可按需调整。
+
+---
+
+## 测试
+
+项目内置 pytest 单元测试 + FastAPI 冒烟测试，**离线可跑、不依赖任何 API Key**。
+
+```bash
+# 安装测试依赖
+pip install -r requirements.txt
+
+# 在 AAA_manager/ 目录下运行全部测试
+cd AAA_manager
+pytest
+```
+
+覆盖模块：`config` / `detector` / `extractor` / `archiver` / `profile_manager` + 主要 API 路由。
+外部依赖（LLM、讯飞 ASR、Git 远程、网络搜索）全部 mock，测试在 `tmp_path` 中执行，不会写入真实 `data/` 和 `问题库/`。
+
+### 提交前自动跑测试（推荐）
+
+项目根目录有 `.pre-commit-config.yaml`，启用后每次 `git commit` 若触及 `AAA_manager/` 会自动运行 pytest：
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+

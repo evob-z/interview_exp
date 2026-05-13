@@ -7,6 +7,7 @@
     let currentMode = 'interview';
     let isStreaming = false;
     let currentSessionId = '';  // 当前会话ID
+    let currentTurnEl = null;  // 当前轮次容器
 
     // --- DOM Elements ---
     const chatMessages = document.getElementById('chatMessages');
@@ -93,8 +94,23 @@
             msgEl.appendChild(sourcesEl);
         }
 
-        chatMessages.appendChild(msgEl);
-        scrollToBottom();
+        if (type === 'user') {
+            // 新问题：创建新轮次容器，插入到顶部
+            currentTurnEl = document.createElement('div');
+            currentTurnEl.className = 'chat-turn';
+            chatMessages.prepend(currentTurnEl);
+            currentTurnEl.appendChild(msgEl);
+        } else {
+            // 回答：追加到当前轮次（问题下方）
+            if (!currentTurnEl) {
+                currentTurnEl = document.createElement('div');
+                currentTurnEl.className = 'chat-turn';
+                chatMessages.prepend(currentTurnEl);
+            }
+            currentTurnEl.appendChild(msgEl);
+        }
+
+        scrollToTop();
         return msgEl;
     }
 
@@ -109,8 +125,15 @@
         bubble.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
 
         msgEl.appendChild(bubble);
-        chatMessages.appendChild(msgEl);
-        scrollToBottom();
+
+        // 追加到当前轮次（用户问题下方）
+        if (!currentTurnEl) {
+            currentTurnEl = document.createElement('div');
+            currentTurnEl.className = 'chat-turn';
+            chatMessages.prepend(currentTurnEl);
+        }
+        currentTurnEl.appendChild(msgEl);
+        scrollToTop();
         return msgEl;
     }
 
@@ -119,7 +142,7 @@
         if (!msgEl) return;
         const bubble = msgEl.querySelector('.message-bubble');
         bubble.innerHTML = renderMarkdown(content);
-        scrollToBottom();
+        // 不强制滚动，让用户可以自由查看
     }
 
     function finalizeStreamingMessage(extras = {}) {
@@ -141,7 +164,7 @@
             msgEl.appendChild(sourcesEl);
         }
 
-        scrollToBottom();
+        scrollToTop();
     }
 
     function renderMarkdown(text) {
@@ -152,9 +175,9 @@
         return text.replace(/\n/g, '<br>');
     }
 
-    function scrollToBottom() {
+    function scrollToTop() {
         requestAnimationFrame(() => {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            chatMessages.scrollTop = 0;
         });
     }
 
@@ -299,7 +322,6 @@
     }
 
     function showFollowups(followups) {
-        const container = document.getElementById('chatMessages');
         const div = document.createElement('div');
         div.className = 'followup-suggestions';
         div.innerHTML = `
@@ -321,8 +343,13 @@
                 }
             });
         });
-        container.appendChild(div);
-        scrollToBottom();
+        // 追加到当前轮次容器
+        if (currentTurnEl) {
+            currentTurnEl.appendChild(div);
+        } else {
+            chatMessages.prepend(div);
+        }
+        scrollToTop();
     }
 
     function removeStreamingMessage() {
@@ -495,6 +522,63 @@
         btn.disabled = false;
     });
 
+    // --- 岗位备战弹窗 ---
+    const prepareModal = document.getElementById('prepareModal');
+    const prepareResult = document.getElementById('prepareResult');
+
+    function openPrepareModal() {
+        if (!prepareModal) return;
+        prepareModal.style.display = 'flex';
+        if (prepareResult) prepareResult.innerHTML = '';
+    }
+    function closePrepareModal() {
+        if (!prepareModal) return;
+        prepareModal.style.display = 'none';
+    }
+
+    const btnPrepare = document.getElementById('btnPrepare');
+    if (btnPrepare) btnPrepare.addEventListener('click', openPrepareModal);
+    const btnPrepareClose = document.getElementById('btnPrepareClose');
+    if (btnPrepareClose) btnPrepareClose.addEventListener('click', closePrepareModal);
+    if (prepareModal) {
+        prepareModal.addEventListener('click', (e) => {
+            if (e.target === prepareModal) closePrepareModal();
+        });
+    }
+
+    const btnPrepareRun = document.getElementById('btnPrepareRun');
+    if (btnPrepareRun) {
+        btnPrepareRun.addEventListener('click', async function () {
+            const company = (document.getElementById('prepCompany').value || '').trim();
+            const position = (document.getElementById('prepPosition').value || '').trim();
+            const date = (document.getElementById('prepDate').value || '').trim() || null;
+            const countRaw = document.getElementById('prepCount').value;
+            const count = countRaw ? parseInt(countRaw, 10) : null;
+
+            if (!company || !position) {
+                showError('请填写公司和岗位');
+                return;
+            }
+            this.disabled = true;
+            if (prepareResult) prepareResult.innerHTML = '⚙️ 正在搜索 JD 并生成预测题…大约耗时 20-60s';
+
+            try {
+                const data = await apiPost('/api/prepare/run', { company, position, date, count });
+                const msg = `✅ 生成完成：<b>${data.question_count}</b> 题`
+                    + `<br>📄 文件：<code>${data.output_filename}</code>`
+                    + `<br>🔍 JD 片段 ${data.jd_snippet_count} 条，来源 URL ${data.jd_source_count} 个，耗时 ${data.elapsed_sec}s`
+                    + `<br>💡 现在可在左侧模拟面试直接搜索这些预测题复习`;
+                if (prepareResult) prepareResult.innerHTML = msg;
+                addMessage('system', `🎯 **岗位备战完成**\n\n- 公司：${data.company}\n- 岗位：${data.position}\n- 题库文件：\`${data.output_filename}\`\n- 生成题数：${data.question_count}\n- JD 片段：${data.jd_snippet_count}\n\n${data.hint || ''}`);
+                setTimeout(loadStats, 600);
+            } catch (err) {
+                if (prepareResult) prepareResult.innerHTML = '❌ 生成失败，请检查后端日志';
+                showError('岗位备战生成失败');
+            }
+            this.disabled = false;
+        });
+    }
+
     // --- Load History (Sessions) ---
     async function loadHistory() {
         const historyList = document.getElementById('historyList');
@@ -531,6 +615,7 @@
 
             // 清空聊天区域并还原消息
             chatMessages.innerHTML = '';
+            currentTurnEl = null;
             session.messages.forEach(msg => {
                 if (msg.role === 'user') {
                     addMessage('user', msg.content);
@@ -562,6 +647,7 @@
                         <span class="tip" data-question="Python GIL 是什么？">Python GIL</span>
                     </div>
                 </div>`;
+            currentTurnEl = null;
             // 重新绑定 tips 点击事件
             chatMessages.querySelectorAll('.welcome-tips .tip').forEach(tip => {
                 tip.addEventListener('click', () => {

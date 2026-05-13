@@ -13,9 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class QuestionBank:
-    def __init__(self, bank_dir: str):
-        """初始化，加载问题库目录"""
+    def __init__(self, bank_dir: str, extra_dirs: list[str] | None = None):
+        """初始化，加载问题库目录
+
+        Args:
+            bank_dir: 主问题库目录（如 问题库/）
+            extra_dirs: 额外的题库目录列表（如 岗位预测/），
+                        这些目录下的 md 文件会被视为问题库补充，
+                        以 _ 开头的文件会被排除（预留给非题库文档）。
+        """
         self.bank_dir = Path(bank_dir)
+        self.extra_dirs = [Path(d) for d in (extra_dirs or [])]
         self.questions: list[dict] = []
         self._categories: list[str] = []
         self._loaded = False
@@ -25,15 +33,28 @@ class QuestionBank:
         self.questions = []
         self._categories = []
 
-        if not self.bank_dir.exists():
+        # 汇总待扫描文件：主目录 + 额外目录
+        md_files: list[Path] = []
+        if self.bank_dir.exists():
+            md_files.extend(sorted(self.bank_dir.glob("*.md")))
+        else:
             logger.warning(f"问题库目录不存在: {self.bank_dir}")
-            self._loaded = True
-            return
 
-        md_files = sorted(self.bank_dir.glob("*.md"))
+        for extra in self.extra_dirs:
+            if extra.exists():
+                # 排除 _ 开头文件（例如未来可能的速查档、草稿）
+                md_files.extend(sorted(f for f in extra.glob("*.md") if not f.name.startswith("_")))
+                logger.info(f"额外题库目录已纳入: {extra}")
+            else:
+                logger.debug(f"额外题库目录不存在，跳过: {extra}")
+
         for md_file in md_files:
-            category = md_file.stem  # 文件名（不含扩展名）作为分类
-            self._categories.append(category)
+            stem = md_file.stem
+            # 来自岗位预测目录的文件，分类加 [预测] 前缀以便与真实题区分
+            is_prep = any(md_file.parent == extra for extra in self.extra_dirs)
+            category = f"[预测]{stem}" if is_prep else stem
+            if category not in self._categories:
+                self._categories.append(category)
             try:
                 content = md_file.read_text(encoding="utf-8")
                 questions = self._parse_md(content, category)
@@ -116,9 +137,16 @@ class QuestionBank:
             return '\n'.join(cleaned).strip()
         return ""
 
-    def search(self, query: str, top_k: int = 5) -> list[dict]:
+    def search(self, query: str, top_k: int = 5, boost_categories: list[str] = None) -> list[dict]:
         """关键词搜索问题
         返回: [{id, text, source, category, points, speech, score}]
+
+        Args:
+            query: 搜索关键词
+            top_k: 返回前 K 条结果
+            boost_categories: 需要限定的 category 列表。
+                当提供时，优先返回该 category 的结果；
+                若目标 category 结果不足 top_k，用该 category 的条目兜底填充。
         """
         if not self._loaded:
             self.load()
@@ -142,8 +170,31 @@ class QuestionBank:
                     "score": score,
                 })
 
+        # 当有明确项目意图时，硬过滤：只保留目标 category 的结果
+        if boost_categories:
+            results = [r for r in results if r["category"] in boost_categories]
+
         # 按分数降序排列
         results.sort(key=lambda x: x["score"], reverse=True)
+
+        # Category fallback: 如果目标 category 结果不足 top_k，
+        # 直接拉取该 category 的条目作为兜底
+        if boost_categories and len(results) < top_k:
+            seen_ids = {r["id"] for r in results}
+            for q in self.questions:
+                if q["category"] in boost_categories and q["id"] not in seen_ids:
+                    results.append({
+                        "id": q["id"],
+                        "text": q["text"],
+                        "source": q["source"],
+                        "category": q["category"],
+                        "points": q["points"],
+                        "speech": q["speech"],
+                        "score": 3.0,
+                    })
+                if len(results) >= top_k:
+                    break
+
         return results[:top_k]
 
     def _compute_score(self, query: str, question: dict) -> float:

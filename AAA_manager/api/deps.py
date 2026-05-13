@@ -12,10 +12,14 @@ from profile.profile_manager import ProfileManager
 
 # 初始化知识模块
 repo_path = str(config.INTERVIEW_REPO_PATH)
-question_bank = QuestionBank(os.path.join(repo_path, "问题库"))
+question_bank = QuestionBank(
+    os.path.join(repo_path, "问题库"),
+    extra_dirs=[os.path.join(repo_path, config.PREP_OUTPUT_DIR)],
+)
 question_bank.load()
 
 project_reader = ProjectReader(config.PROJECT_CONFIGS)
+project_reader.load_startup()
 resume_reader = ResumeReader(os.path.join(repo_path, config.RESUME_DIR))
 excel_reader = ExcelReader(os.path.join(repo_path, config.COMPANY_EXCEL_PATH))
 

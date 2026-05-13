@@ -42,6 +42,11 @@ REVIEW_OUTPUT_DIR = os.getenv("REVIEW_OUTPUT_DIR", "面试复盘")
 RESUME_DIR = os.getenv("RESUME_DIR", "个人情况/简历")
 COMPANY_EXCEL_PATH = os.getenv("COMPANY_EXCEL_PATH", "公司投递情况/投递记录.xlsx")
 
+# === 岗位预测配置（面试前针对性备战）===
+PREP_OUTPUT_DIR = os.getenv("PREP_OUTPUT_DIR", "岗位预测")
+PREP_OUTPUT_PATH: Path = INTERVIEW_REPO_PATH / PREP_OUTPUT_DIR
+PREP_QUESTION_COUNT = int(os.getenv("PREP_QUESTION_COUNT", "20"))  # 默认每次生成的预测题数
+
 # 项目文档配置：格式 "项目名:路径:文档文件1,文档文件2;项目名2:路径2:文档文件"
 PROJECT_CONFIGS = os.getenv("PROJECT_CONFIGS", "")
 
@@ -66,6 +71,25 @@ XUNFEI_API_SECRET: str = os.getenv("XUNFEI_API_SECRET", "")
 # === Web 服务配置 ===
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+
+
+# 项目别名 → category 映射（用于检索加权）
+PROJECT_ALIASES: dict[str, str] = {
+    "旅行助手": "项目-Agent_SFT_SHENWEI",
+    "旅行顾问": "项目-Agent_SFT_SHENWEI",
+    "SHENWEI": "项目-Agent_SFT_SHENWEI",
+    "Agent_SFT": "项目-Agent_SFT_SHENWEI",
+    "微调": "项目-Agent_SFT_SHENWEI",
+    "晓海": "项目-law_sea",
+    "MLAW": "项目-law_sea",
+    "海商法": "项目-law_sea",
+    "law_sea": "项目-law_sea",
+    "实习": "项目-law_sea",
+    "合规": "项目-compliance_checker",
+    "中能建": "项目-compliance_checker",
+    "compliance": "项目-compliance_checker",
+    "合规审查": "项目-compliance_checker",
+}
 
 
 def get_active_provider(provider: str = None) -> tuple[str, str, str]:

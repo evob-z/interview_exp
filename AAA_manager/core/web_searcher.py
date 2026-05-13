@@ -158,6 +158,69 @@ class WebSearcher:
 
         return result
 
+    async def search_jd(self, company: str, position: str, max_results: int = 6) -> dict:
+        """
+        搜索近期岗位 JD（职位描述）信息。
+
+        策略：组装招聘关键词 + 时限词汇，优先从招聘主流站点返回的结果中
+        提取技术能力要求、工作职责、加分项。
+
+        Args:
+            company: 公司名称（如 字节跳动）
+            position: 岗位名称（如 AI应用开发实习生）
+            max_results: 最大搜索条数
+
+        Returns:
+            {company, position, jd_snippets: [str], source_urls: [str], raw_results: list}
+        """
+        result = {
+            "company": company,
+            "position": position,
+            "jd_snippets": [],
+            "source_urls": [],
+            "raw_results": [],
+        }
+
+        if not self.enabled:
+            logger.info("搜索未启用，跳过 JD 搜索")
+            return result
+
+        # 多条 query 覆盖不同维度：JD 正文 / 职责 / 要求
+        queries = [
+            f"{company} {position} 招聘 JD 岗位职责 要求",
+            f"{company} {position} 实习生 招聘公告 技术栈",
+            f"{company} {position} boss直聘 拉勾 牛客 前程无忧",
+        ]
+
+        all_results: list[dict] = []
+        seen_urls: set[str] = set()
+        for q in queries:
+            try:
+                rs = await self.search(q, max_results=max_results)
+                for r in rs:
+                    u = r.get("url", "")
+                    if u and u in seen_urls:
+                        continue
+                    if u:
+                        seen_urls.add(u)
+                    all_results.append(r)
+            except Exception as e:
+                logger.warning(f"JD 搜索某轮失败，忽略: {e}")
+
+        result["raw_results"] = all_results
+        result["source_urls"] = [r.get("url", "") for r in all_results if r.get("url")]
+        # 收集有效长度的内容片段，作为 JD 上下文给 LLM
+        for r in all_results:
+            snippet = (r.get("content") or "").strip()
+            if len(snippet) >= 40:
+                result["jd_snippets"].append(snippet)
+
+        logger.info(
+            f"JD 搜索完成: company={company}, position={position}, "
+            f"有效片段={len(result['jd_snippets'])}, 源 URL={len(result['source_urls'])}"
+        )
+        return result
+
     async def search_tech_concept(self, concept: str) -> dict:
         """
         搜索技术概念

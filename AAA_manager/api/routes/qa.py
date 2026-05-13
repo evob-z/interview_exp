@@ -16,6 +16,7 @@ from api.routes.followup import async_generate_followups
 from llm_client import chat_completion, chat_completion_stream
 from logger import get_logger
 import config
+from config import PROJECT_ALIASES
 
 logger = get_logger("api.qa")
 
@@ -26,6 +27,18 @@ _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 
 # 相似度阈值：score >= 此值时直接返回已有回答
 DIRECT_ANSWER_THRESHOLD = 5.5
+
+
+def detect_project_boost(question: str) -> list[str] | None:
+    """检测问题中的项目别名，返回需要加权的 category 列表"""
+    boost = set()
+    for alias, category in PROJECT_ALIASES.items():
+        if alias.lower() in question.lower():
+            if isinstance(category, list):
+                boost.update(category)
+            else:
+                boost.add(category)
+    return list(boost) if boost else None
 
 
 def _load_qa_prompt() -> str:
@@ -125,46 +138,84 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     """
     搜索知识库并构建 context 字符串。
     返回 (context_text, sources)
+    结果按项目(category)分组展示，避免模型混淆不同项目的内容。
     """
     sources: list[dict] = []
     context_parts: list[str] = []
 
     # 1. 搜索问题库
+    qa_results = []
     try:
-        qa_results = question_bank.search(question, top_k=5)
-        if qa_results:
-            context_parts.append("### 问题库匹配结果\n")
-            for r in qa_results:
-                entry = f"**Q{r['id']}（{r['category']}）: {r['text']}**\n"
-                if r.get("points"):
-                    entry += "答题要点:\n"
-                    for pt in r["points"]:
-                        entry += f"  - {pt}\n"
-                if r.get("speech"):
-                    entry += f"面试话术:\n> {r['speech']}\n"
-                context_parts.append(entry)
-
-                sources.append({
-                    "category": r["category"],
-                    "question_id": f"Q{r['id']}",
-                    "text": r["text"],
-                })
-
+        boost = detect_project_boost(question)
+        qa_results = question_bank.search(question, top_k=5, boost_categories=boost)
     except Exception as e:
         logger.warning(f"问题库搜索失败: {e}")
 
     # 2. 搜索项目文档
+    project_results = []
     try:
-        project_results = project_reader.search_in_projects(question)
-        if project_results:
-            context_parts.append("\n### 项目文档匹配\n")
-            for pr in project_results[:3]:
-                context_parts.append(
-                    f"- 项目 {pr['project_name']}（{pr['file']}）:\n"
-                    f"  {pr['context']}\n"
-                )
+        project_results = project_reader.search_in_projects(question) or []
     except Exception as e:
         logger.warning(f"项目文档搜索失败: {e}")
+
+    # 2.5 当检测到明确项目意图时，过滤项目文档结果，只保留目标项目
+    if boost and project_results:
+        # 从 boost categories 提取项目名（如 "项目-law_sea" → "law_sea"）
+        boost_project_names = {cat.replace("项目-", "") for cat in boost}
+        filtered = [pr for pr in project_results
+                    if pr.get("project_name", "") in boost_project_names]
+        # 只有过滤后还有结果时才替换，否则保留原始结果
+        if filtered:
+            project_results = filtered
+
+    # 3. 按 category/项目 分组组织上下文
+    if qa_results or project_results:
+        # 按 category 分组问题库结果
+        from collections import defaultdict
+        grouped_qa: dict[str, list] = defaultdict(list)
+        for r in qa_results:
+            grouped_qa[r["category"]].append(r)
+            sources.append({
+                "category": r["category"],
+                "question_id": f"Q{r['id']}",
+                "text": r["text"],
+            })
+
+        # 按项目名分组项目文档结果
+        grouped_proj: dict[str, list] = defaultdict(list)
+        for pr in project_results[:3]:
+            grouped_proj[pr.get("project_name", "未知项目")].append(pr)
+
+        # 收集所有出现的项目名，统一输出
+        all_categories = list(dict.fromkeys(
+            list(grouped_qa.keys()) + [f"项目-{k}" for k in grouped_proj.keys()]
+        ))
+
+        for cat in all_categories:
+            cat_parts = []
+            # 问题库条目
+            if cat in grouped_qa:
+                for r in grouped_qa[cat]:
+                    entry = f"**Q{r['id']}: {r['text']}**\n"
+                    if r.get("points"):
+                        entry += "答题要点:\n"
+                        for pt in r["points"]:
+                            entry += f"  - {pt}\n"
+                    if r.get("speech"):
+                        entry += f"面试话术:\n> {r['speech']}\n"
+                    cat_parts.append(entry)
+
+            # 项目文档条目（匹配同一项目）
+            proj_name = cat.replace("项目-", "") if cat.startswith("项目-") else cat
+            if proj_name in grouped_proj:
+                for pr in grouped_proj[proj_name]:
+                    cat_parts.append(
+                        f"项目文档（{pr['file']}）:\n  {pr['context']}\n"
+                    )
+
+            if cat_parts:
+                context_parts.append(f"### {cat}\n")
+                context_parts.extend(cat_parts)
 
     context_text = "\n".join(context_parts) if context_parts else "（知识库中无相关内容）"
     return context_text, sources
@@ -214,7 +265,8 @@ async def ask_question(req: QARequest):
 
     try:
         # 先尝试直接匹配（跳过无内容的空壳条目）
-        qa_results = question_bank.search(req.question, top_k=5)
+        boost = detect_project_boost(req.question)
+        qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost)
         for candidate in qa_results:
             if candidate["score"] < DIRECT_ANSWER_THRESHOLD:
                 break
@@ -263,7 +315,8 @@ async def ask_question_stream(req: QARequest):
         raise HTTPException(status_code=400, detail="问题不能为空")
 
     # 第一步：快速搜索问题库（<50ms）
-    qa_results = question_bank.search(req.question, top_k=5)
+    boost = detect_project_boost(req.question)
+    qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost)
     # 找第一个有内容且分数达标的结果（跳过空壳重复条目）
     best_match = None
     for r in qa_results:

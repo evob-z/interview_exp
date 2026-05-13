@@ -10,6 +10,7 @@ AAA_manager - 面经管理程序
     python main.py extract <file>
     python main.py archive <file>
     python main.py review [file]
+    python main.py prepare 字节跳动_AI应用开发实习生-AI数据与安全_260512
 """
 
 import argparse
@@ -29,6 +30,7 @@ try:
     import archiver
     import reviewer
     import git_ops
+    import preparer
 except ImportError as e:
     print(f"[错误] 模块导入失败: {e}")
     print("请确保已安装依赖: pip install -r requirements.txt")
@@ -430,6 +432,49 @@ def cmd_archive(args):
     print("\n=== 完成 ===\n")
 
 
+def cmd_prepare(args):
+    """岗位针对性预测题生成：搜 JD → 结合简历项目 → LLM 出题 → 写入 岗位预测/"""
+    # 优先使用 spec 位置参数，否则使用 --company/--position/--date
+    if getattr(args, "spec", None):
+        company, position, date = preparer.parse_spec(args.spec)
+        # 允许 --date 覆盖 spec 中的日期
+        if getattr(args, "date", None):
+            date = args.date
+    else:
+        company = getattr(args, "company", "") or ""
+        position = getattr(args, "position", "") or ""
+        date = getattr(args, "date", None)
+
+    if not company or not position:
+        print("[错误] 必须提供公司与岗位。示例：python main.py prepare 字节跳动_AI应用开发实习生_260512")
+        print("      或：python main.py prepare --company 字节跳动 --position AI应用开发实习生")
+        return
+
+    print("\n=== 岗位预测题生成 ===")
+    print(f"公司: {company}")
+    print(f"岗位: {position}")
+    print(f"日期: {date or '今天'}")
+
+    try:
+        result = preparer.prepare_interview(
+            company=company,
+            position=position,
+            date=date,
+            question_count=getattr(args, "count", None),
+        )
+    except Exception as e:
+        logger.error(f"岗位预测失败: {e}", exc_info=True)
+        print(f"[错误] {e}")
+        return
+
+    print(f"\n[完成] 生成 {result.question_count} 题")
+    print(f"  文件: {result.output_file}")
+    print(f"  JD 片段: {result.jd_snippet_count} 条，来源 URL: {result.jd_source_count} 个")
+    print(f"  耗时: {result.elapsed_sec:.1f}s")
+    print("  💡 提示: 该题库已自动被模拟面试检索纳入，可直接在 Web 端搜索复习")
+    print("\n=== 完成 ===\n")
+
+
 def cmd_review(args):
     """复盘指定/最新面经"""
     if args.file:
@@ -495,6 +540,7 @@ def main():
   python main.py extract 蚂蚁_大厂_260423_一面技术.md
   python main.py archive 蚂蚁_大厂_260423_一面技术.md
   python main.py review                   复盘最新面经
+  python main.py prepare 字节跳动_AI应用开发实习生_260512   岗位预测出题
         """,
     )
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
@@ -529,6 +575,19 @@ def main():
         help="生成独立复盘文件到 面试复盘/ 目录（默认追加到原文件）"
     )
 
+    # prepare 子命令
+    prepare_parser = subparsers.add_parser(
+        "prepare", help="岗位针对性预测题生成（写入 岗位预测/，自动被模拟面试检索）"
+    )
+    prepare_parser.add_argument(
+        "spec", nargs="?", default=None,
+        help="简写格式：公司_岗位_YYMMDD（日期可省略）"
+    )
+    prepare_parser.add_argument("--company", help="公司名（与 spec 二选一）")
+    prepare_parser.add_argument("--position", help="岗位名")
+    prepare_parser.add_argument("--date", help="面试日期 YYMMDD，默认今天")
+    prepare_parser.add_argument("--count", type=int, default=None, help="期望题数（默认读 config）")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -542,6 +601,7 @@ def main():
         "extract": cmd_extract,
         "archive": cmd_archive,
         "review": cmd_review,
+        "prepare": cmd_prepare,
     }
 
     handler = commands.get(args.command)

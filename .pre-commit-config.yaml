@@ -1,0 +1,11 @@
+repos:
+  - repo: local
+    hooks:
+      - id: aaa-manager-tests
+        name: AAA_manager pytest
+        entry: pytest AAA_manager/tests
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        # 仅在 AAA_manager 有改动时触发
+        files: ^AAA_manager/

@@ -106,6 +106,9 @@
                         <button class="action-btn" id="btnSync" title="同步面试数据">
                             🔄 触发同步
                         </button>
+                        <button class="action-btn" id="btnPrepare" title="面试前针对性备战：搜 JD + LLM 出题">
+                            🎯 岗位备战
+                        </button>
                         <button class="action-btn" id="btnAdvice" title="获取改进建议">
                             💡 获取建议
                         </button>
@@ -137,6 +140,41 @@
         <button class="mobile-nav-btn active" data-panel="chat">💬 问答</button>
         <button class="mobile-nav-btn" data-panel="info">📊 面板</button>
     </nav>
+
+    <!-- 岗位备战弹窗 -->
+    <div class="modal-mask" id="prepareModal" style="display:none;">
+        <div class="modal-panel">
+            <div class="modal-header">
+                <h3>🎯 岗位针对性备战</h3>
+                <button class="modal-close" id="btnPrepareClose">×</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-hint">输入公司与岗位，助手将联网搜集近期 JD，结合你的简历与项目用 LLM 生成预测题，自动入题库并可在模拟面试中搜到。</p>
+                <label class="form-field">
+                    <span>公司</span>
+                    <input type="text" id="prepCompany" placeholder="如：字节跳动">
+                </label>
+                <label class="form-field">
+                    <span>岗位</span>
+                    <input type="text" id="prepPosition" placeholder="如：AI 应用开发实习生-AI 数据与安全">
+                </label>
+                <div class="form-row">
+                    <label class="form-field">
+                        <span>日期 (YYMMDD)</span>
+                        <input type="text" id="prepDate" placeholder="缺省为今天" maxlength="6">
+                    </label>
+                    <label class="form-field">
+                        <span>题数</span>
+                        <input type="number" id="prepCount" placeholder="15" min="5" max="30">
+                    </label>
+                </div>
+                <div class="prepare-result" id="prepareResult"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn" id="btnPrepareRun">🚀 开始生成</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/app.js"></script>
 </body>

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 import config
-from api.routes import qa, profile, sync, stats, history, followup, asr
+from api.routes import qa, profile, sync, stats, history, followup, asr, prepare
 
 app = FastAPI(
     title="面试助手",
@@ -33,6 +33,7 @@ app.include_router(stats.router, prefix="/api/stats", tags=["统计"])
 app.include_router(history.router, prefix="/api/history", tags=["history"])
 app.include_router(followup.router, prefix="/api/followup", tags=["追问预测"])
 app.include_router(asr.router, prefix="/api/asr", tags=["语音识别"])
+app.include_router(prepare.router, prefix="/api/prepare", tags=["岗位预测"])
 
 # 静态文件（前端）
 frontend_dir = os.path.join(os.path.dirname(__file__), "frontend", "static")
