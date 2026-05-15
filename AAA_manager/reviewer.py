@@ -1,9 +1,8 @@
 """
 reviewer.py - 面试复盘分析模块
 对面经文件生成完整复盘分析报告。
-支持两种模式：
-  1. 追加到原文件末尾（旧模式，向后兼容）
-  2. 生成独立复盘文件到指定目录（新模式）
+
+主流程：用户指定 面试原始问题/ 中的文件 → 校验结构化 → 生成复盘 → 写入 面试复盘/
 """
 
 import os
@@ -12,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from config import INTERVIEW_REPO_PATH, REVIEW_OUTPUT_DIR
+from config import INTERVIEW_REPO_PATH, RAW_INPUT_DIR, REVIEW_OUTPUT_DIR
 from llm_client import chat_completion
 from logger import get_logger
 
@@ -98,6 +97,64 @@ class ReviewResult:
     question_count: int       # 分析的问题数量
     top_concerns: list[str] = field(default_factory=list)  # 面试官最关注的 TOP3
     output_file: str = ""     # 输出的独立复盘文件路径（新模式下有值）
+
+
+def validate_review_input(file_path: str) -> tuple[bool, str]:
+    """
+    校验 review 的输入文件是否合法。
+
+    规则：
+    1. 文件必须位于 面试原始问题/ 目录
+    2. 文件内容必须已结构化（包含编号问题列表）
+
+    Returns:
+        (通过/不通过, 错误信息)
+    """
+    path = Path(file_path).resolve()
+    raw_dir = (Path(INTERVIEW_REPO_PATH) / RAW_INPUT_DIR).resolve()
+
+    # 1. 校验文件是否在 面试原始问题/ 目录
+    try:
+        path.relative_to(raw_dir)
+    except ValueError:
+        return False, "错误：review 只接受 面试原始问题/ 目录中的文件"
+
+    # 2. 校验文件是否存在
+    if not path.exists():
+        return False, f"错误：文件不存在: {file_path}"
+
+    # 3. 校验文件内容是否已结构化
+    content = path.read_text(encoding="utf-8")
+    if not _is_structured(content):
+        return False, "错误：文件尚未结构化，请先执行 extract"
+
+    return True, ""
+
+
+def _is_structured(content: str) -> bool:
+    """
+    判断文件内容是否已结构化。
+
+    规则：
+    - 包含 3 个以上编号列表项（^\d+[.、]\s+.+） → 已结构化
+    - 或包含 ## Q{N} / ### Q{N} 格式 → 已结构化
+    - 否则 → 未结构化
+    """
+    lines = content.split("\n")
+
+    # 检查 Q{N} 格式
+    q_pattern = re.compile(r"^#{2,4}\s*Q\d+")
+    q_count = sum(1 for line in lines if q_pattern.match(line))
+    if q_count >= 3:
+        return True
+
+    # 检查编号列表项
+    num_pattern = re.compile(r"^\d+[\.\.\、]\s+.+")
+    num_count = sum(1 for line in lines if num_pattern.match(line))
+    if num_count >= 3:
+        return True
+
+    return False
 
 
 def _load_review_prompt() -> str:
@@ -363,57 +420,49 @@ def generate_review_file(
     )
 
 
+# [DEPRECATED] find_latest_interview 已废弃，不再被 CLI 调用
+# Web API 如有需要可保留，但建议迁移到新流程
 def find_latest_interview(repo_path: str = None) -> str | None:
     """
-    找到最新的面经文件（按文件名中的 YYMMDD 排序）。
-    用于 "复盘最近一次面试" 场景。
-
-    Args:
-        repo_path: 面经仓库路径，默认使用 config 中的 INTERVIEW_REPO_PATH
-
-    Returns:
-        最新面经文件的路径，未找到返回 None
+    [DEPRECATED] 找到最新的面经文件（按文件名中的 YYMMDD 排序）。
+    此函数已废弃，新 CLI 流程要求用户显式指定文件。
     """
+    import warnings
+    warnings.warn("find_latest_interview() 已废弃，请使用显式文件路径", DeprecationWarning, stacklevel=2)
+
     search_path = Path(repo_path) if repo_path else INTERVIEW_REPO_PATH
     logger.info(f"搜索最新面经文件，路径: {search_path}")
 
-    # 匹配文件名中的日期 YYMMDD（6位数字）
     date_pattern = re.compile(r"(\d{6})")
+    candidates: list[tuple[str, str]] = []
 
-    candidates: list[tuple[str, str]] = []  # (date_str, file_path)
-
-    # 搜索根目录和子目录中的 .md 文件
     for md_file in search_path.rglob("*.md"):
-        # 跳过问题库、AAA_manager 等非面经目录
         rel_path = md_file.relative_to(search_path)
         skip_dirs = {"问题库", "AAA_manager", ".qoder", "面试"}
         if any(part in skip_dirs for part in rel_path.parts[:-1]):
             continue
-
         match = date_pattern.search(md_file.stem)
         if match:
-            date_str = match.group(1)
-            candidates.append((date_str, str(md_file)))
+            candidates.append((match.group(1), str(md_file)))
 
     if not candidates:
-        logger.warning("未找到包含日期的面经文件")
         return None
 
-    # 按日期降序排序，取最新的
     candidates.sort(key=lambda x: x[0], reverse=True)
-    latest = candidates[0][1]
-    logger.info(f"最新面经文件: {latest} (日期: {candidates[0][0]})")
-    return latest
+    return candidates[0][1]
 
 
 if __name__ == "__main__":
-    # 快速测试：复盘最新面经
-    latest = find_latest_interview()
-    if latest:
-        print(f"找到最新面经: {latest}")
-        result = review_interview(latest, append_to_file=False)
-        print(f"\n问题数: {result.question_count}")
-        print(f"TOP3 关注点: {result.top_concerns}")
-        print(f"\n--- 复盘报告 ---\n{result.report_text}")
+    # 快速测试
+    import sys
+    if len(sys.argv) > 1:
+        test_file = sys.argv[1]
+        valid, err = validate_review_input(test_file)
+        if not valid:
+            print(f"[校验失败] {err}")
+        else:
+            print(f"[校验通过] 开始生成复盘...")
+            result = generate_review_file(source_file=test_file)
+            print(f"输出文件: {result.output_file}")
     else:
-        print("未找到面经文件")
+        print("用法: python reviewer.py <面试原始问题/中的文件>")

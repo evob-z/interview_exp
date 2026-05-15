@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import INTERVIEW_REPO_PATH
+from config import INTERVIEW_REPO_PATH, RAW_INPUT_DIR
 from llm_client import chat_completion
 from logger import get_logger
 
@@ -70,6 +70,64 @@ def _load_system_prompt() -> str:
     return FALLBACK_SYSTEM_PROMPT
 
 
+def detect_file_type(file_content: str) -> str | None:
+    """
+    识别文件类型。
+
+    Returns:
+        "transcript" - 录音转写（含说话人+时间戳）
+        "chat" - 口语化回忆/碎片笔记
+        "structured" - 已结构化（编号列表或Q{N}格式）
+        None - 无法识别（内容为空等）
+    """
+    if not file_content or not file_content.strip():
+        return None
+
+    # ---------- 结构化特征 ----------
+    # 已有 Q{N} 编号格式
+    if re.search(r"^#{2,3}\s*Q\d+", file_content, re.MULTILINE):
+        return "structured"
+
+    # 已有编号列表（至少 3 个连续编号项）
+    numbered_items = re.findall(r"^\d+\.\s+.+", file_content, re.MULTILINE)
+    if len(numbered_items) >= 3:
+        question_like = sum(
+            1 for item in numbered_items
+            if re.search(r"[?？吗呢怎么为什么如何介绍]", item)
+        )
+        if question_like >= 2:
+            return "structured"
+
+    # 已有多个 ## 标题
+    headings = re.findall(r"^##\s+.+", file_content, re.MULTILINE)
+    if len(headings) >= 3:
+        return "structured"
+
+    # ---------- 录音转写特征 ----------
+    has_speaker = bool(re.search(r"说话人\s*[12]", file_content))
+    has_timestamp = bool(re.search(r"\d{1,2}:\d{2}(:\d{2})?", file_content))
+    if has_speaker and has_timestamp:
+        return "transcript"
+
+    # ---------- 口语化 / 碎片笔记特征 ----------
+    oral_markers = ["嗯", "啊", "对吧", "就是说", "那个", "然后呢", "这个嘛"]
+    oral_count = sum(file_content.count(marker) for marker in oral_markers)
+    if oral_count >= 5:
+        return "chat"
+
+    # 纯文本连续段落
+    lines = file_content.strip().split("\n")
+    non_empty_lines = [l for l in lines if l.strip()]
+    if len(non_empty_lines) >= 10:
+        has_any_structure = bool(
+            re.search(r"^(#+\s|[-*]\s|\d+\.\s)", file_content, re.MULTILINE)
+        )
+        if not has_any_structure:
+            return "chat"
+
+    return None
+
+
 def needs_extraction(file_content: str) -> bool:
     """
     判断文件内容是否需要抽取。
@@ -84,62 +142,12 @@ def needs_extraction(file_content: str) -> bool:
     - 已有编号列表（1. 2. 3.）+ 问题格式
     - 文件已经是结构化面经
     """
-    if not file_content or not file_content.strip():
+    # 复用 detect_file_type 进行判断
+    detected = detect_file_type(file_content)
+    if detected == "structured":
         return False
-
-    # ---------- 不需要抽取的特征 ----------
-
-    # 已有 Q{N} 编号格式（## Q1 / ### Q1）
-    if re.search(r"^#{2,3}\s*Q\d+", file_content, re.MULTILINE):
-        logger.debug("检测到 Q{N} 编号格式，无需抽取")
-        return False
-
-    # 已有编号列表（至少 3 个连续编号项）
-    numbered_items = re.findall(r"^\d+\.\s+.+", file_content, re.MULTILINE)
-    if len(numbered_items) >= 3:
-        # 进一步检查：如果编号项看起来像问题列表
-        question_like = sum(
-            1 for item in numbered_items
-            if re.search(r"[?？吗呢怎么为什么如何介绍]", item)
-        )
-        if question_like >= 2:
-            logger.debug("检测到结构化编号问题列表，无需抽取")
-            return False
-
-    # 已有多个 ## 标题（结构化文档）
-    headings = re.findall(r"^##\s+.+", file_content, re.MULTILINE)
-    if len(headings) >= 3:
-        logger.debug("检测到多个二级标题，文件已结构化，无需抽取")
-        return False
-
-    # ---------- 需要抽取的特征 ----------
-
-    # 录音转写特征：含 "说话人" + 时间戳
-    has_speaker = bool(re.search(r"说话人\s*[12]", file_content))
-    has_timestamp = bool(re.search(r"\d{1,2}:\d{2}(:\d{2})?", file_content))
-    if has_speaker and has_timestamp:
-        logger.debug("检测到录音转写格式，需要抽取")
+    if detected in ("transcript", "chat"):
         return True
-
-    # 口语化特征
-    oral_markers = ["嗯", "啊", "对吧", "就是说", "那个", "然后呢", "这个嘛"]
-    oral_count = sum(file_content.count(marker) for marker in oral_markers)
-    if oral_count >= 5:
-        logger.debug(f"检测到口语化特征 ({oral_count} 处)，需要抽取")
-        return True
-
-    # 纯文本连续段落（无标题、无列表，但有足够长度）
-    lines = file_content.strip().split("\n")
-    non_empty_lines = [l for l in lines if l.strip()]
-    if len(non_empty_lines) >= 10:
-        # 检查是否缺少结构化标记
-        has_any_structure = bool(
-            re.search(r"^(#+\s|[-*]\s|\d+\.\s)", file_content, re.MULTILINE)
-        )
-        if not has_any_structure:
-            logger.debug("检测到纯文本连续段落，需要抽取")
-            return True
-
     return False
 
 
@@ -252,3 +260,172 @@ def extract_questions(file_path: str) -> ExtractionResult | None:
         logger.warning(f"抽取结果解析失败: {file_path_obj.name}")
 
     return result
+
+
+# ──────────────────────────────────────────────
+# extract_and_write：新的高层接口
+# ──────────────────────────────────────────────
+
+def _infer_output_filename(result: ExtractionResult | None, source_path: Path) -> str:
+    """
+    从 ExtractionResult 或源文件名推断输出文件名（不含 .md 后缀）。
+    格式: {公司}_{类型}_{YYMMDD}_{场次}
+    """
+    # 尝试从 ExtractionResult 推断
+    if result and result.company:
+        date_str = ""
+        date_match = re.search(r"(\d{6})", source_path.stem)
+        if date_match:
+            date_str = date_match.group(1)
+
+        parts = [result.company]
+        if result.company_type:
+            parts.append(result.company_type)
+        if date_str:
+            parts.append(date_str)
+        if result.round:
+            parts.append(result.round)
+        return "_".join(parts)
+
+    # fallback：使用原文件名
+    return source_path.stem
+
+
+def _format_questions_md(title: str, questions: list) -> str:
+    """
+    将问题列表格式化为 Markdown 输出。
+
+    Args:
+        title: 文件标题
+        questions: ExtractedQuestion 列表或 dict 列表
+    """
+    lines = [f"# {title}", ""]
+    for i, q in enumerate(questions, 1):
+        if isinstance(q, ExtractedQuestion):
+            text = q.text
+            category = q.category_suggestion
+        else:
+            text = q.get("text", "")
+            category = q.get("category_suggestion", "")
+
+        # 如果有项目标签且不是"八股"，添加 [项目名] 前缀
+        if category and category.startswith("项目-"):
+            project_name = category.replace("项目-", "")
+            lines.append(f"{i}. [{project_name}] {text}")
+        else:
+            lines.append(f"{i}. {text}")
+    lines.append("")  # 末尾空行
+    return "\n".join(lines)
+
+
+def _parse_structured_to_lines(content: str) -> list[dict]:
+    """
+    从已结构化文件内容中解析问题列表。
+    返回 [{"text": ..., "category_suggestion": ...}, ...]
+    """
+    questions = []
+
+    # 尝试匹配 Q{N} 格式
+    q_pattern = re.compile(r"^#{2,4}\s*Q(\d+)[：:]\s*(.+)", re.MULTILINE)
+    matches = q_pattern.findall(content)
+    if matches:
+        for _, q_text in matches:
+            questions.append({"text": q_text.strip(), "category_suggestion": ""})
+        return questions
+
+    # 尝试匹配编号列表
+    num_pattern = re.compile(r"^\s*\d+[\.\.、\)]\s*(.+)", re.MULTILINE)
+    matches = num_pattern.findall(content)
+    if matches:
+        for q_text in matches:
+            if len(q_text.strip()) > 5:
+                questions.append({"text": q_text.strip(), "category_suggestion": ""})
+
+    return questions
+
+
+def extract_and_write(file_path: str, file_type: str | None = None) -> str:
+    """
+    从指定文件中抽取面试问题并写入 面试原始问题/ 目录。
+
+    Args:
+        file_path: 输入文件路径
+        file_type: 可选，"transcript"/"chat"/"structured"/None（None 则自动识别）
+
+    Returns:
+        输出文件的路径（字符串）
+
+    Raises:
+        FileNotFoundError: 输入文件不存在
+        ValueError: 无法识别文件类型或无法抽取问题
+    """
+    file_path_obj = Path(file_path)
+
+    if not file_path_obj.exists():
+        raise FileNotFoundError(f"文件不存在: {file_path}")
+
+    content = file_path_obj.read_text(encoding="utf-8")
+    if not content.strip():
+        raise ValueError(f"文件内容为空: {file_path}")
+
+    # 确定文件类型
+    if file_type:
+        detected_type = file_type
+        logger.info(f"强制指定文件类型: {file_type}")
+    else:
+        detected_type = detect_file_type(content)
+        if not detected_type:
+            raise ValueError(f"无法识别文件类型: {file_path_obj.name}")
+        logger.info(f"自动识别文件类型: {detected_type}")
+
+    # 输出目录
+    output_dir = Path(INTERVIEW_REPO_PATH) / RAW_INPUT_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 如果已结构化，直接格式化复制
+    if detected_type == "structured":
+        logger.info(f"文件已结构化，直接格式化复制: {file_path_obj.name}")
+        questions = _parse_structured_to_lines(content)
+        if not questions:
+            raise ValueError(f"结构化文件中未能解析出问题: {file_path_obj.name}")
+
+        output_name = _infer_output_filename(None, file_path_obj)
+        output_content = _format_questions_md(output_name, questions)
+        output_path = output_dir / f"{output_name}.md"
+        output_path.write_text(output_content, encoding="utf-8")
+        logger.info(f"结构化文件已写入: {output_path}")
+        return str(output_path)
+
+    # 需要 LLM 抽取（transcript / chat）
+    logger.info(f"开始 LLM 抽取问题: {file_path_obj.name} (类型: {detected_type})")
+    system_prompt = _load_system_prompt()
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": content},
+    ]
+
+    try:
+        response = chat_completion(
+            messages=messages,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        raise RuntimeError(f"LLM 调用失败: {e}") from e
+
+    result = _parse_extraction_result(response, raw_file=str(file_path))
+    if not result or not result.questions:
+        raise ValueError(f"LLM 未能抽取出有效问题: {file_path_obj.name}")
+
+    # 推断输出文件名并写入
+    output_name = _infer_output_filename(result, file_path_obj)
+    output_content = _format_questions_md(output_name, result.questions)
+    output_path = output_dir / f"{output_name}.md"
+    output_path.write_text(output_content, encoding="utf-8")
+
+    logger.info(
+        f"抽取完成并写入: {output_path.name} "
+        f"({len(result.questions)} 个问题)"
+    )
+    return str(output_path)
