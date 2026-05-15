@@ -90,7 +90,83 @@ html, body {
     overflow: hidden;
 }
 
-/* ===== Chat Panel (Left) ===== */
+/* ===== Nav Panel (Left Sidebar) ===== */
+.nav-panel {
+    width: 260px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+    overflow: hidden;
+}
+
+.nav-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.nav-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text);
+}
+
+.btn-new-chat {
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font);
+    transition: background var(--transition);
+}
+
+.btn-new-chat:hover {
+    background: var(--primary-dark);
+}
+
+.nav-history {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.nav-history-header {
+    padding: 12px 20px 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+/* Nav Toggle (Hamburger) - hidden on desktop */
+.nav-toggle-btn {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--text);
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background var(--transition);
+}
+
+.nav-toggle-btn:hover {
+    background: var(--bg);
+}
+
+/* ===== Chat Panel (Center) ===== */
 .chat-panel {
     flex: 1;
     display: flex;
@@ -103,18 +179,13 @@ html, body {
 .chat-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 12px;
     padding: 16px 24px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-white);
     flex-shrink: 0;
 }
 
-.chat-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text);
-}
 
 .mode-switcher {
     display: flex;
@@ -546,7 +617,7 @@ html, body {
 
 /* ===== Info Panel (Right) ===== */
 .info-panel {
-    width: 360px;
+    width: 300px;
     flex-shrink: 0;
     min-height: 0;
     height: 100vh;
@@ -681,14 +752,14 @@ html, body {
 
 /* Action Buttons */
 .action-buttons {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 8px;
 }
 
 .action-btn {
     width: 100%;
-    padding: 10px 16px;
+    padding: 10px 12px;
     border: 1px solid var(--border);
     background: var(--bg-white);
     border-radius: var(--radius-sm);
@@ -696,7 +767,7 @@ html, body {
     cursor: pointer;
     transition: all var(--transition);
     font-family: var(--font);
-    text-align: left;
+    text-align: center;
 }
 
 .action-btn:hover {
@@ -726,8 +797,9 @@ html, body {
 
 /* History List */
 .history-list {
-    max-height: 300px;
+    flex: 1;
     overflow-y: auto;
+    padding: 0 12px;
 }
 
 .history-item {
@@ -735,6 +807,7 @@ html, body {
     border-bottom: 1px solid var(--border);
     cursor: pointer;
     transition: background var(--transition);
+    position: relative;
 }
 
 .history-item:hover {
@@ -795,6 +868,25 @@ html, body {
         flex-direction: column;
     }
 
+    .nav-panel {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 56px;
+        width: 280px;
+        z-index: 60;
+        box-shadow: 4px 0 12px rgba(0,0,0,0.1);
+    }
+
+    .nav-panel.active {
+        display: flex;
+    }
+
+    .nav-toggle-btn {
+        display: flex;
+    }
+
     .chat-panel {
         border-right: none;
         height: 100vh;
@@ -846,22 +938,6 @@ html, body {
     }
 }
 
-/* ===== New Chat Button ===== */
-.new-chat-btn {
-    padding: 6px 14px;
-    background: var(--primary);
-    color: white;
-    border: none;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    cursor: pointer;
-    font-family: var(--font);
-    transition: background var(--transition);
-}
-
-.new-chat-btn:hover {
-    background: var(--primary-dark);
-}
 
 /* History Session Active */
 .history-item.active {
@@ -869,20 +945,73 @@ html, body {
     border-left: 3px solid var(--primary);
 }
 
-/* ===== Error Toast ===== */
-.error-toast {
+/* Export Button on History Item */
+.history-actions {
+    display: flex;
+    gap: 4px;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.history-item:hover .history-actions {
+    opacity: 1;
+}
+
+.history-action-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: var(--bg-white);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    padding: 0;
+    line-height: 1;
+}
+
+.history-action-btn:hover {
+    background: var(--border);
+}
+
+.history-action-btn.delete-btn:hover {
+    background: var(--error-light);
+}
+
+.history-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ===== Toast (Error & Success) ===== */
+.error-toast,
+.success-toast {
     position: fixed;
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: var(--error);
-    color: white;
     padding: 12px 24px;
     border-radius: var(--radius-sm);
     font-size: 13px;
-    z-index: 1000;
+    z-index: 3000;
     animation: slideDown 0.3s ease;
     box-shadow: var(--shadow-md);
+    color: white;
+}
+
+.error-toast {
+    background: var(--error);
+}
+
+.success-toast {
+    background: var(--success);
 }
 
 @keyframes slideDown {
@@ -931,4 +1060,77 @@ html, body {
 
 .followup-text {
     color: var(--text);
+}
+
+/* ===== Search Results Collapsible ===== */
+.search-results-collapsible {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.search-results-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg);
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    transition: background var(--transition);
+}
+
+.search-results-toggle:hover {
+    background: var(--primary-light);
+}
+
+.search-toggle-icon {
+    font-size: 14px;
+}
+
+.search-toggle-text {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.search-toggle-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.search-results-body {
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-height: 400px;
+    overflow-y: auto;
+    transition: max-height 0.35s ease, padding 0.35s ease, opacity 0.3s ease;
+    opacity: 1;
+}
+
+.search-results-collapsible.collapsed .search-results-body {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    overflow: hidden;
+}
+
+.search-results-body p {
+    margin: 4px 0;
+}
+
+.search-results-body ul {
+    padding-left: 16px;
+    margin: 4px 0;
+}
+
+/* LLM answer area */
+.llm-answer-area {
+    margin-top: 4px;
 }

@@ -56,6 +56,14 @@
         setTimeout(() => toast.remove(), 4000);
     }
 
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'success-toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
     // --- Chat Messages ---
     function clearWelcome() {
         const welcome = chatMessages.querySelector('.welcome-message');
@@ -145,6 +153,64 @@
         // 不强制滚动，让用户可以自由查看
     }
 
+    /**
+     * 将搜索结果区域折叠为可展开/收起的块
+     */
+    function collapseSearchResults(searchContent) {
+        const msgEl = document.getElementById('streamingMsg');
+        if (!msgEl || !searchContent.trim()) return;
+        const bubble = msgEl.querySelector('.message-bubble');
+
+        // 构建折叠容器
+        const wrapper = document.createElement('div');
+        wrapper.className = 'search-results-collapsible collapsed';
+
+        const toggle = document.createElement('div');
+        toggle.className = 'search-results-toggle';
+        toggle.innerHTML = '<span class="search-toggle-icon">📎</span> <span class="search-toggle-text">相关资料</span> <span class="search-toggle-hint">(点击展开)</span>';
+        toggle.addEventListener('click', () => {
+            wrapper.classList.toggle('collapsed');
+            const hint = toggle.querySelector('.search-toggle-hint');
+            if (wrapper.classList.contains('collapsed')) {
+                hint.textContent = '(点击展开)';
+            } else {
+                hint.textContent = '(点击收起)';
+            }
+        });
+
+        const body = document.createElement('div');
+        body.className = 'search-results-body';
+        body.innerHTML = renderMarkdown(searchContent);
+
+        wrapper.appendChild(toggle);
+        wrapper.appendChild(body);
+
+        // 替换 bubble 内容为折叠块 + LLM 内容区
+        bubble.innerHTML = '';
+        bubble.appendChild(wrapper);
+
+        // 创建 LLM 输出区域
+        const llmArea = document.createElement('div');
+        llmArea.className = 'llm-answer-area';
+        bubble.appendChild(llmArea);
+    }
+
+    /**
+     * 更新流式消息（折叠模式下仅更新 LLM 输出区域）
+     */
+    function updateStreamingMessageWithCollapsed(content) {
+        const msgEl = document.getElementById('streamingMsg');
+        if (!msgEl) return;
+        const bubble = msgEl.querySelector('.message-bubble');
+        const llmArea = bubble.querySelector('.llm-answer-area');
+        if (llmArea) {
+            llmArea.innerHTML = renderMarkdown(content);
+        } else {
+            // fallback: 没有折叠结构就直接更新
+            bubble.innerHTML = renderMarkdown(content);
+        }
+    }
+
     function finalizeStreamingMessage(extras = {}) {
         const msgEl = document.getElementById('streamingMsg');
         if (!msgEl) return;
@@ -191,7 +257,7 @@
                 const data = await apiPost('/api/history/sessions', {});
                 currentSessionId = data.session.id;
             } catch (e) {
-                console.warn('创建会话失败:', e);
+                console.error('创建会话失败:', e);
             }
         }
 
@@ -239,6 +305,9 @@
             const decoder = new TextDecoder();
             let fullContent = '';
             let extras = {};
+            let preSearchContent = '';  // 搜索阶段的内容
+            let llmStarted = false;    // LLM 是否已开始输出
+            let sourcesReceived = false; // 是否已收到 sources 事件
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -254,10 +323,25 @@
                         try {
                             const parsed = JSON.parse(data);
                             if (parsed.type === 'content') {
-                                fullContent += parsed.data || '';
-                                updateStreamingMessage(fullContent);
+                                if (!sourcesReceived) {
+                                    // sources 之前的内容属于搜索阶段
+                                    preSearchContent += parsed.data || '';
+                                    fullContent += parsed.data || '';
+                                    updateStreamingMessage(fullContent);
+                                } else {
+                                    // sources 之后第一个 content 到来 → LLM 正式开始
+                                    if (!llmStarted) {
+                                        llmStarted = true;
+                                        collapseSearchResults(preSearchContent);
+                                        // 重置 fullContent 为仅 LLM 内容（折叠区域独立展示）
+                                        fullContent = '';
+                                    }
+                                    fullContent += parsed.data || '';
+                                    updateStreamingMessageWithCollapsed(fullContent);
+                                }
                             } else if (parsed.type === 'sources') {
                                 extras.sources = parsed.data;
+                                sourcesReceived = true;
                             } else if (parsed.type === 'done') {
                                 // done 事件，忽略（轮询在流结束后统一触发）
                             } else if (parsed.content) {
@@ -420,16 +504,34 @@
             const panel = btn.dataset.panel;
             const chatPanel = document.querySelector('.chat-panel');
             const infoPanel = document.querySelector('.info-panel');
+            const navPanel = document.getElementById('navPanel');
+
+            // 隐藏所有面板
+            chatPanel.classList.add('hidden');
+            infoPanel.classList.remove('active');
+            if (navPanel) navPanel.classList.remove('active');
 
             if (panel === 'chat') {
                 chatPanel.classList.remove('hidden');
-                infoPanel.classList.remove('active');
-            } else {
-                chatPanel.classList.add('hidden');
+            } else if (panel === 'info') {
                 infoPanel.classList.add('active');
+            } else if (panel === 'nav') {
+                chatPanel.classList.remove('hidden');
+                if (navPanel) navPanel.classList.add('active');
             }
         });
     });
+
+    // --- Nav Panel Toggle (hamburger for mobile) ---
+    const btnNavToggle = document.getElementById('btnNavToggle');
+    if (btnNavToggle) {
+        btnNavToggle.addEventListener('click', () => {
+            const navPanel = document.getElementById('navPanel');
+            if (navPanel) {
+                navPanel.classList.toggle('active');
+            }
+        });
+    }
 
     // --- Load Stats ---
     async function loadStats() {
@@ -453,7 +555,7 @@
                 });
             }
         } catch (err) {
-            console.warn('加载统计信息失败:', err);
+            console.error('加载统计信息失败:', err);
         }
     }
 
@@ -471,7 +573,7 @@
             profileContent.style.display = 'block';
         } catch (err) {
             profileLoading.textContent = '暂无画像数据';
-            console.warn('加载画像失败:', err);
+            console.error('加载画像失败:', err);
         }
     }
 
@@ -597,8 +699,71 @@
                 item.innerHTML = `
                     <div class="history-question">${s.title}</div>
                     <div class="history-meta">${s.updated_at.slice(5, 16).replace('T', ' ')} · ${s.message_count}条</div>
+                    <div class="history-actions">
+                        <button class="history-action-btn process-btn" title="一条龙处理（提取→复盘→入库）">⚡</button>
+                        <button class="history-action-btn delete-btn" title="删除会话">🗑️</button>
+                    </div>
                 `;
-                item.addEventListener('click', () => loadSession(s.id));
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.history-actions')) return;
+                    loadSession(s.id);
+                });
+                item.querySelector('.process-btn').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (s.message_count === 0) {
+                        showError('空会话无法处理');
+                        return;
+                    }
+                    if (!confirm(`对会话「${s.title}」执行一条龙处理（提取→复盘→入库）？\n此操作可能需要30-60秒`)) return;
+
+                    const btn = e.target.closest('.process-btn');
+                    btn.disabled = true;
+                    btn.textContent = '⏳';
+                    showToast('开始一条龙处理...');
+
+                    try {
+                        const res = await fetch(`/api/sync/session-pipeline/${s.id}`, { method: 'POST' });
+                        if (!res.ok) throw new Error(`请求失败: ${res.status}`);
+                        const data = await res.json();
+
+                        // 构建结果消息
+                        let msg = '⚡ **一条龙处理完成**\n\n';
+                        data.steps.forEach(step => {
+                            const icon = step.status === 'ok' ? '✅' : step.status === 'skipped' ? '⏭️' : '❌';
+                            const stepName = {extract: '问题抽取', review: '面试复盘', archive: '问题入库'}[step.step];
+                            msg += `${icon} ${stepName}`;
+                            if (step.count) msg += ` (${step.count}题)`;
+                            if (step.archived_count !== undefined) msg += ` (入库${step.archived_count}题, 跳过${step.skipped_count}题)`;
+                            if (step.file) msg += ` → ${step.file}`;
+                            if (step.error) msg += ` - ${step.error}`;
+                            if (step.reason) msg += ` - ${step.reason}`;
+                            msg += '\n';
+                        });
+
+                        addMessage('system', msg);
+                        showToast('一条龙处理完成');
+                        loadStats();
+                    } catch (err) {
+                        showError('处理失败: ' + err.message);
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = '⚡';
+                    }
+                });
+                item.querySelector('.delete-btn').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (!confirm(`确定删除会话「${s.title}」？`)) return;
+                    try {
+                        await fetch(`/api/history/sessions/${s.id}`, { method: 'DELETE' });
+                        if (s.id === currentSessionId) {
+                            await createNewSession();
+                        }
+                        loadHistory();
+                        showToast('会话已删除');
+                    } catch (err) {
+                        showError('删除失败');
+                    }
+                });
                 historyList.appendChild(item);
             });
         } catch (err) {
@@ -664,6 +829,87 @@
     // --- New Chat Button ---
     document.getElementById('btnNewChat').addEventListener('click', createNewSession);
 
+    // --- Export Modal ---
+    let exportModalEl = null;
+
+    function createExportModal() {
+        const mask = document.createElement('div');
+        mask.className = 'modal-mask';
+        mask.id = 'exportModal';
+        mask.style.display = 'none';
+        mask.innerHTML = `
+            <div class="modal-panel">
+                <div class="modal-header">
+                    <h3>📤 导出面试问题</h3>
+                    <button class="modal-close" id="exportModalClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-hint">将会话中的面试问题导出到「面试原始问题」目录</div>
+                    <div class="form-field">
+                        <label>文件名（不含 .md）</label>
+                        <input type="text" id="exportFilename" placeholder="留空则自动命名" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="action-btn" id="exportCancel" style="max-width:80px;text-align:center;margin-right:8px;">取消</button>
+                    <button class="action-btn" id="exportConfirm" style="max-width:80px;text-align:center;background:var(--primary);color:white;border-color:var(--primary);">确认</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(mask);
+        exportModalEl = mask;
+
+        // 绑定事件
+        mask.querySelector('#exportModalClose').addEventListener('click', closeExportModal);
+        mask.querySelector('#exportCancel').addEventListener('click', closeExportModal);
+        mask.addEventListener('click', (e) => {
+            if (e.target === mask) closeExportModal();
+        });
+    }
+
+    function openExportModal(sessionId, sessionTitle) {
+        if (!exportModalEl) createExportModal();
+        exportModalEl.style.display = 'flex';
+        const input = exportModalEl.querySelector('#exportFilename');
+        input.value = sessionTitle || '';
+        input.focus();
+        input.select();
+
+        // 重新绑定确认按钮（避免闭包残留）
+        const confirmBtn = exportModalEl.querySelector('#exportConfirm');
+        const newConfirm = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+        newConfirm.addEventListener('click', () => doExport(sessionId));
+
+        // Enter 键确认
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') doExport(sessionId);
+        };
+    }
+
+    function closeExportModal() {
+        if (exportModalEl) exportModalEl.style.display = 'none';
+    }
+
+    async function doExport(sessionId) {
+        const input = exportModalEl.querySelector('#exportFilename');
+        const filename = input.value.trim() || null;
+        const confirmBtn = exportModalEl.querySelector('#exportConfirm');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = '导出中…';
+
+        try {
+            const data = await apiPost(`/api/history/sessions/${sessionId}/export`, { filename });
+            closeExportModal();
+            showToast(`导出成功：${data.count} 个问题 → ${data.file}`);
+        } catch (err) {
+            showError('导出失败：' + err.message);
+        } finally {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = '确认';
+        }
+    }
+
     // --- Voice Input Module ---
     let voiceWs = null;
     let isRecording = false;
@@ -713,7 +959,7 @@
                         autoResizeInput();
                     }
                 } catch (e) {
-                    console.warn('解析语音结果失败:', e);
+                    console.error('解析语音结果失败:', e);
                 }
             };
 
@@ -790,6 +1036,11 @@
         loadStats();
         loadProfile();
         await createNewSession();  // 自动创建会话
+        // 清理空会话（排除当前会话）
+        try {
+            await fetch('/api/history/sessions/cleanup-empty', { method: 'DELETE' });
+        } catch (e) { /* ignore */ }
+        loadHistory();  // 刷新列表（清理可能删除了一些空会话）
         chatInput.focus();
     }
 

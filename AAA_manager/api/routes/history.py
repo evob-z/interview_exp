@@ -2,7 +2,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from logger import get_logger
@@ -110,6 +110,33 @@ async def get_session(session_id: str):
     return {"status": "ok", "session": session}
 
 
+@router.delete("/sessions/cleanup-empty")
+async def cleanup_empty_sessions():
+    """删除所有空会话（messages为空数组的会话，排除最近60秒内创建的）"""
+    _ensure_dir()
+    deleted = []
+    now = datetime.now()
+    for f in SESSIONS_DIR.glob("*.json"):
+        try:
+            with open(f, "r", encoding="utf-8") as fp:
+                data = json.load(fp)
+            if not data.get("messages"):
+                # 只删除创建超过60秒的空会话，保护刚创建的会话
+                created_at = data.get("created_at", "")
+                if created_at:
+                    try:
+                        created_time = datetime.fromisoformat(created_at)
+                        if (now - created_time).total_seconds() < 60:
+                            continue  # 跳过最近创建的
+                    except (ValueError, TypeError):
+                        pass
+                os.remove(f)
+                deleted.append(data["id"])
+        except Exception:
+            continue
+    return {"status": "ok", "deleted_count": len(deleted), "deleted_ids": deleted}
+
+
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
     """删除会话"""
@@ -117,3 +144,24 @@ async def delete_session(session_id: str):
     if path.exists():
         os.remove(path)
     return {"status": "ok", "message": "已删除"}
+
+
+@router.post("/sessions/{session_id}/export")
+async def export_session(session_id: str, body: dict = {}):
+    """导出会话中的面试问题到面试原始问题目录"""
+    from exporter import export_session_questions
+
+    filename = body.get("filename", None)
+    rewrite = body.get("rewrite", False)
+    try:
+        output_path, count = export_session_questions(session_id, filename, rewrite=rewrite)
+        return {
+            "status": "ok",
+            "file": str(output_path.name),
+            "count": count,
+            "rewritten": rewrite,
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

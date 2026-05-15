@@ -13,11 +13,26 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- 左侧：聊天区域 -->
+        <!-- 左侧：导航面板 -->
+        <aside class="nav-panel" id="navPanel">
+            <div class="nav-header">
+                <h2 class="nav-title">面试助手</h2>
+                <button id="btnNewChat" class="btn-new-chat" title="新对话">+ 新对话</button>
+            </div>
+            <div class="nav-history">
+                <div class="nav-history-header">
+                    <span>📝 历史会话</span>
+                </div>
+                <div id="historyList" class="history-list">
+                    <div class="loading-placeholder">加载中...</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 中间：聊天区域 -->
         <main class="chat-panel">
             <header class="chat-header">
-                <h1 class="chat-title">面试助手</h1>
-                <button class="new-chat-btn" id="btnNewChat" title="新建对话">+ 新对话</button>
+                <button class="nav-toggle-btn" id="btnNavToggle" title="菜单">☰</button>
                 <div class="mode-switcher">
                     <button class="mode-btn active" data-mode="interview">模拟面试</button>
                     <button class="mode-btn" data-mode="explain">详细讲解</button>
@@ -120,23 +135,12 @@
                 </div>
             </div>
 
-            <!-- 历史记录 -->
-            <div class="card" id="historyCard">
-                <div class="card-header" data-toggle="historyBody">
-                    <h3>📝 历史记录</h3>
-                    <span class="card-toggle">▾</span>
-                </div>
-                <div class="card-body" id="historyBody">
-                    <div class="history-list" id="historyList">
-                        <div class="loading-placeholder">加载中...</div>
-                    </div>
-                </div>
-            </div>
         </aside>
     </div>
 
     <!-- 移动端底部导航 -->
     <nav class="mobile-nav">
+        <button class="mobile-nav-btn" data-panel="nav">📝 会话</button>
         <button class="mobile-nav-btn active" data-panel="chat">💬 问答</button>
         <button class="mobile-nav-btn" data-panel="info">📊 面板</button>
     </nav>
