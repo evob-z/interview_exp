@@ -87,7 +87,7 @@ interview_exp/
 ### 1. 克隆并准备环境
 
 ```bash
-git clone <your-fork-url>
+git clone https://github.com/evob-z/interview_exp.git
 cd interview_exp
 
 conda create -n interview_exp python=3.11 -y
@@ -105,7 +105,11 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# 编辑 .env：填入 DEEPSEEK_API_KEY 等密钥，按本机修改路径配置
+# 编辑 .env，最少需要配置：
+# - DEEPSEEK_API_KEY（必需，核心 LLM 调用）
+# - INTERVIEW_REPO_PATH（必需，指向本仓库根目录）
+# - SEARCH_API_KEY（推荐，启用网络搜索增强）
+# - XUNFEI_APP_ID/API_KEY/API_SECRET + ENABLE_VOICE_INPUT=true（可选，启用语音输入）
 ```
 
 ### 4. 配置项目规则（可选）
@@ -184,21 +188,21 @@ python main.py export-session <session_id> [--name 文件名] [--rewrite]
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 | - |
+| `DEEPSEEK_API_KEY` | **（必需）** DeepSeek API 密钥 | - |
 | `DEEPSEEK_BASE_URL` | DeepSeek API 地址 | `https://api.deepseek.com/v1` |
 | `DEEPSEEK_MODEL` | DeepSeek 模型 | `deepseek-chat` |
 | `QWEN_API_KEY` | Qwen API 密钥（备选） | - |
 | `QWEN_BASE_URL` | Qwen API 地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `QWEN_MODEL` | Qwen 模型 | `qwen-plus` |
 | `DEFAULT_PROVIDER` | 默认 LLM 提供商 | `deepseek` |
-| `INTERVIEW_REPO_PATH` | 面经仓库根目录 | 项目上级目录 |
+| `INTERVIEW_REPO_PATH` | **（必需）** 面经仓库根目录 | 项目上级目录 |
 | `PROJECT_PATHS` | 项目代码路径（逗号分隔） | - |
 | `RAW_INPUT_DIR` | 原始问题输入目录 | `面试原始问题` |
 | `REVIEW_OUTPUT_DIR` | 复盘输出目录 | `面试复盘` |
 | `RESUME_DIR` | 简历所在目录 | `个人情况/简历` |
 | `COMPANY_EXCEL_PATH` | 投递记录 Excel 路径 | - |
 | `PREP_OUTPUT_DIR` | 岗位预测题库目录 | `岗位预测` |
-| `PREP_QUESTION_COUNT` | 岗位预测默认题数 | `15` |
+| `PREP_QUESTION_COUNT` | 岗位预测默认题数 | `20` |
 | `PROJECT_CONFIGS` | 项目文档配置（`名称:路径:文件;...`） | - |
 | `ENABLE_WEB_SEARCH` | 是否启用网络搜索 | `true` |
 | `SEARCH_API_KEY` | 搜索 API 密钥 | - |
@@ -230,7 +234,7 @@ PROJECT_CONFIGS=project_a:/path/to/project_a:README.md;project_b:/path/to/projec
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `ENABLE_FOLLOWUP_PREDICTION` | 是否启用追问预测 | `False` |
-| `ENABLE_VOICE_INPUT` | 是否启用语音输入 | `True` |
+| `ENABLE_VOICE_INPUT` | 是否启用语音输入 | `False` |
 | `MAX_CONTEXT_TURNS` | 多轮截断保留轮数 | `6` |
 | `FOLLOWUP_COUNT` | 追问预测生成数量 | `3` |
 
