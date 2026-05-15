@@ -89,6 +89,8 @@ PROJECT_ALIASES: dict[str, str] = {
     "中能建": "项目-compliance_checker",
     "compliance": "项目-compliance_checker",
     "合规审查": "项目-compliance_checker",
+    "合同审查": "项目-compliance_checker",
+    "合同审查助手": "项目-compliance_checker",
 }
 
 
