@@ -8,6 +8,14 @@ dist/
 build/
 .venv/
 venv/
+.python-version
+
+# === 测试与覆盖率 ===
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
 # === 环境与敏感信息 ===
 AAA_manager/.env
@@ -52,6 +60,7 @@ temp/
 .cursor/
 *.swp
 *.swo
+*.local
 
 # === OS ===
 .DS_Store
