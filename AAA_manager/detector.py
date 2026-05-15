@@ -1,6 +1,9 @@
 """
 detector.py - Git 变更检测模块
 检测面经仓库中的 Git 变更，分类返回需要处理的文件列表。
+
+NOTE: 本模块仅由 Web API 使用（api/routes/sync.py、api/routes/stats.py），
+      CLI 工作流已不再依赖此模块（见 main.py 的 extract/review/archive/sync 命令）。
 """
 
 import re
