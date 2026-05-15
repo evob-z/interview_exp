@@ -180,6 +180,23 @@
         </div>
     </div>
 
+    <!-- 一条龙处理弹窗 -->
+    <div class="modal-mask" id="pipelineModal" style="display:none;">
+        <div class="modal-panel">
+            <h3 style="padding:16px 20px 0;">⚡ 一条龙处理</h3>
+            <p class="modal-desc">提取面试问题 → 生成复盘 → 归档到问题库</p>
+            <div class="form-group">
+                <label for="pipelineFilename">输出文件名（不含.md后缀）</label>
+                <input type="text" id="pipelineFilename" placeholder="如：字节跳动_大厂_260513_技术一面">
+                <span class="form-hint">格式：公司_规模_日期_面试类型，示例：美团_大厂_260507_一面技术</span>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" id="btnPipelineCancel">取消</button>
+                <button class="btn-primary" id="btnPipelineRun">开始处理</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/app.js"></script>
 </body>
 </html>

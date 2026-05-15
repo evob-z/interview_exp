@@ -2,7 +2,7 @@
 import json
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from logger import get_logger
@@ -131,7 +131,7 @@ async def cleanup_empty_sessions():
                     except (ValueError, TypeError):
                         pass
                 os.remove(f)
-                deleted.append(data["id"])
+                deleted.append(data.get("id", f.stem))
         except Exception:
             continue
     return {"status": "ok", "deleted_count": len(deleted), "deleted_ids": deleted}

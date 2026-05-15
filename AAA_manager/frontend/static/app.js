@@ -257,7 +257,7 @@
                 const data = await apiPost('/api/history/sessions', {});
                 currentSessionId = data.session.id;
             } catch (e) {
-                console.error('创建会话失败:', e);
+                console.warn('创建会话失败:', e);
             }
         }
 
@@ -555,7 +555,7 @@
                 });
             }
         } catch (err) {
-            console.error('加载统计信息失败:', err);
+            console.warn('加载统计信息失败:', err);
         }
     }
 
@@ -573,7 +573,7 @@
             profileContent.style.display = 'block';
         } catch (err) {
             profileLoading.textContent = '暂无画像数据';
-            console.error('加载画像失败:', err);
+            console.warn('加载画像失败:', err);
         }
     }
 
@@ -708,47 +708,13 @@
                     if (e.target.closest('.history-actions')) return;
                     loadSession(s.id);
                 });
-                item.querySelector('.process-btn').addEventListener('click', async (e) => {
+                item.querySelector('.process-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (s.message_count === 0) {
                         showError('空会话无法处理');
                         return;
                     }
-                    if (!confirm(`对会话「${s.title}」执行一条龙处理（提取→复盘→入库）？\n此操作可能需要30-60秒`)) return;
-
-                    const btn = e.target.closest('.process-btn');
-                    btn.disabled = true;
-                    btn.textContent = '⏳';
-                    showToast('开始一条龙处理...');
-
-                    try {
-                        const res = await fetch(`/api/sync/session-pipeline/${s.id}`, { method: 'POST' });
-                        if (!res.ok) throw new Error(`请求失败: ${res.status}`);
-                        const data = await res.json();
-
-                        // 构建结果消息
-                        let msg = '⚡ **一条龙处理完成**\n\n';
-                        data.steps.forEach(step => {
-                            const icon = step.status === 'ok' ? '✅' : step.status === 'skipped' ? '⏭️' : '❌';
-                            const stepName = {extract: '问题抽取', review: '面试复盘', archive: '问题入库'}[step.step];
-                            msg += `${icon} ${stepName}`;
-                            if (step.count) msg += ` (${step.count}题)`;
-                            if (step.archived_count !== undefined) msg += ` (入库${step.archived_count}题, 跳过${step.skipped_count}题)`;
-                            if (step.file) msg += ` → ${step.file}`;
-                            if (step.error) msg += ` - ${step.error}`;
-                            if (step.reason) msg += ` - ${step.reason}`;
-                            msg += '\n';
-                        });
-
-                        addMessage('system', msg);
-                        showToast('一条龙处理完成');
-                        loadStats();
-                    } catch (err) {
-                        showError('处理失败: ' + err.message);
-                    } finally {
-                        btn.disabled = false;
-                        btn.textContent = '⚡';
-                    }
+                    openPipelineModal(s.id, s.title, s.updated_at);
                 });
                 item.querySelector('.delete-btn').addEventListener('click', async (e) => {
                     e.stopPropagation();
@@ -959,7 +925,7 @@
                         autoResizeInput();
                     }
                 } catch (e) {
-                    console.error('解析语音结果失败:', e);
+                    console.warn('解析语音结果失败:', e);
                 }
             };
 
@@ -1031,16 +997,102 @@
         }
     }
 
+    // --- Pipeline Modal ---
+    function openPipelineModal(sessionId, title, updatedAt) {
+        const modal = document.getElementById('pipelineModal');
+        const input = document.getElementById('pipelineFilename');
+
+        // 预填默认文件名：模拟面试_{日期}
+        const dateStr = updatedAt ? updatedAt.slice(2, 10).replace(/-/g, '').slice(0, 6) : new Date().toISOString().slice(2, 10).replace(/-/g, '').slice(0, 6);
+        input.value = `模拟面试_${dateStr}`;
+        input.placeholder = `如：字节跳动_大厂_${dateStr}_技术一面`;
+
+        modal.style.display = 'flex';
+        input.focus();
+        input.select();
+
+        // 存储当前处理的 session 信息
+        modal._sessionId = sessionId;
+        modal._title = title;
+    }
+
+    // 取消按钮
+    document.getElementById('btnPipelineCancel').addEventListener('click', () => {
+        document.getElementById('pipelineModal').style.display = 'none';
+    });
+
+    // 开始处理按钮
+    document.getElementById('btnPipelineRun').addEventListener('click', async () => {
+        const modal = document.getElementById('pipelineModal');
+        const filename = document.getElementById('pipelineFilename').value.trim();
+        const sessionId = modal._sessionId;
+
+        if (!filename) {
+            showError('请输入文件名');
+            return;
+        }
+
+        modal.style.display = 'none';
+        showToast('开始一条龙处理...');
+
+        try {
+            const res = await fetch(`/api/sync/session-pipeline/${sessionId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: filename })
+            });
+            if (!res.ok) throw new Error(`请求失败: ${res.status}`);
+            const data = await res.json();
+
+            // 构建结果消息
+            let msg = '⚡ **一条龙处理完成**\n\n';
+            data.steps.forEach(step => {
+                const icon = step.status === 'ok' ? '✅' : step.status === 'skipped' ? '⏭️' : '❌';
+                const stepName = {extract: '问题抽取', review: '面试复盘', archive: '问题入库'}[step.step];
+                msg += `${icon} ${stepName}`;
+                if (step.count) msg += ` (${step.count}题)`;
+                if (step.archived_count !== undefined) msg += ` (入库${step.archived_count}题, 跳过${step.skipped_count}题)`;
+                if (step.file) msg += ` → ${step.file}`;
+                if (step.error) msg += ` - ${step.error}`;
+                if (step.reason) msg += ` - ${step.reason}`;
+                msg += '\n';
+            });
+
+            addMessage('system', msg);
+            showToast('一条龙处理完成');
+            loadStats();
+        } catch (err) {
+            showError('处理失败: ' + err.message);
+        }
+    });
+
+    // 点击遮罩关闭
+    document.getElementById('pipelineModal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) {
+            e.currentTarget.style.display = 'none';
+        }
+    });
+
+    // ESC 键关闭弹窗
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const pipelineModal = document.getElementById('pipelineModal');
+            if (pipelineModal && pipelineModal.style.display !== 'none') {
+                pipelineModal.style.display = 'none';
+            }
+        }
+    });
+
     // --- Initialize ---
     async function init() {
         loadStats();
         loadProfile();
         await createNewSession();  // 自动创建会话
-        // 清理空会话（排除当前会话）
+        // 清理空会话（排除当前刚创建的会话）
         try {
             await fetch('/api/history/sessions/cleanup-empty', { method: 'DELETE' });
         } catch (e) { /* ignore */ }
-        loadHistory();  // 刷新列表（清理可能删除了一些空会话）
+        loadHistory();  // 刷新列表
         chatInput.focus();
     }
 

@@ -62,6 +62,11 @@ def export_session_questions(session_id: str, filename: str = None, rewrite: boo
             date_str = datetime.now().strftime("%y%m%d")
         filename = f"模拟面试_{date_str}"
     
+    # 3.5 检查文件名是否符合规范格式
+    STANDARD_PATTERN = re.compile(r"^.+_.+_\d{6}_.+$")
+    if not STANDARD_PATTERN.match(filename):
+        logger.warning(f"文件名未遵循规范格式(公司_规模_日期_面试类型): '{filename}'，可能影响后续复盘和入库的来源追溯")
+
     # 4. 生成编号列表格式
     lines = []
     for i, q in enumerate(questions, 1):
@@ -171,6 +176,7 @@ def _parse_rewrite_result(result: str, expected_count: int) -> list[str]:
     Returns:
         解析后的问题列表
     """
+    import re
     lines = result.strip().split("\n")
     parsed = []
     for line in lines:

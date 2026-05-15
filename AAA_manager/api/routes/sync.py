@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 
 import config
 import detector
@@ -236,8 +238,12 @@ async def trigger_sync(dry_run: bool = False):
         _sync_state["running"] = False
 
 
+class PipelineRequest(BaseModel):
+    filename: Optional[str] = None
+
+
 @router.post("/session-pipeline/{session_id}")
-async def session_pipeline(session_id: str):
+async def session_pipeline(session_id: str, req: PipelineRequest = PipelineRequest()):
     """
     会话一条龙处理：导出 → 复盘 → 入库
     复用现有工具链
@@ -248,7 +254,7 @@ async def session_pipeline(session_id: str):
 
     # Step 1: 导出（含 LLM 改写）
     try:
-        output_path, count = export_session_questions(session_id, rewrite=True)
+        output_path, count = export_session_questions(session_id, filename=req.filename, rewrite=True)
         results["steps"].append({"step": "extract", "status": "ok", "file": str(output_path.name), "count": count})
     except Exception as e:
         results["steps"].append({"step": "extract", "status": "error", "error": str(e)})
