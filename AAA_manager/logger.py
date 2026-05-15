@@ -1,19 +1,20 @@
 """
 logger.py - 日志模块
-提供统一的日志配置，支持控制台彩色输出和文件记录。
+提供统一的日志配置，支持控制台彩色输出和文件轮转记录。
 """
 
 import logging
-import os
 import sys
-from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from config import LOG_DIR
 
-
 # 确保日志目录存在
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+# 根 logger 配置：防止第三方库（如 FastAPI、httpx）刷屏
+logging.getLogger().setLevel(logging.WARNING)
 
 
 class ColorFormatter(logging.Formatter):
@@ -32,9 +33,12 @@ class ColorFormatter(logging.Formatter):
         color = self.COLORS.get(record.levelno, self.RESET)
         levelname = record.levelname
         formatted = (
-            f"{color}[{self.formatTime(record, '%Y-%m-%d %H:%M:%S')}] "
-            f"[{levelname}] [{record.name}] {record.getMessage()}{self.RESET}"
+            f"{color}[{self.formatTime(record, '%Y-%m-%d %H:%M:%S')}.{record.msecs:03.0f}] "
+            f"[{levelname}] [{record.name}:{record.lineno}] "
+            f"{record.getMessage()}{self.RESET}"
         )
+        if record.exc_info:
+            formatted += f"\n{self.formatException(record.exc_info)}"
         return formatted
 
 
@@ -42,10 +46,14 @@ class FileFormatter(logging.Formatter):
     """文件日志格式化器"""
 
     def format(self, record: logging.LogRecord) -> str:
-        return (
-            f"[{self.formatTime(record, '%Y-%m-%d %H:%M:%S')}] "
-            f"[{record.levelname}] [{record.name}] {record.getMessage()}"
+        formatted = (
+            f"[{self.formatTime(record, '%Y-%m-%d %H:%M:%S')}.{record.msecs:03.0f}] "
+            f"[{record.levelname}] [{record.name}:{record.lineno}] "
+            f"{record.getMessage()}"
         )
+        if record.exc_info:
+            formatted += f"\n{self.formatException(record.exc_info)}"
+        return formatted
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -65,6 +73,7 @@ def get_logger(name: str) -> logging.Logger:
         return logger
 
     logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
     # 控制台 handler（带颜色）
     console_handler = logging.StreamHandler(sys.stdout)
@@ -72,12 +81,21 @@ def get_logger(name: str) -> logging.Logger:
     console_handler.setFormatter(ColorFormatter())
     logger.addHandler(console_handler)
 
-    # 文件 handler（按日期命名）
-    today = datetime.now().strftime("%Y-%m-%d")
-    log_file = LOG_DIR / f"sync_{today}.log"
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    # 文件 handler（轮转策略：单文件最大 5MB，保留 5 个备份）
+    log_file = LOG_DIR / "app.log"
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(FileFormatter())
     logger.addHandler(file_handler)
 
     return logger
+
+
+def is_debug_enabled(name: str) -> bool:
+    """检查指定 logger 是否启用了 DEBUG 级别"""
+    return logging.getLogger(name).isEnabledFor(logging.DEBUG)

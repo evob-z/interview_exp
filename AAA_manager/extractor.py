@@ -4,6 +4,7 @@ extractor.py - 面试问题抽取模块
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -165,7 +166,8 @@ def _parse_extraction_result(json_str: str, raw_file: str) -> ExtractionResult |
         data = json.loads(cleaned)
     except json.JSONDecodeError as e:
         logger.error(f"JSON 解析失败: {e}")
-        logger.debug(f"原始返回内容: {json_str[:500]}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"原始返回内容: {json_str[:500]}")
         return None
 
     # 解析 questions

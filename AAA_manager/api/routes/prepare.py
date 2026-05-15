@@ -59,7 +59,7 @@ async def run_prepare(req: PrepareRequest):
         try:
             question_bank.load()
         except Exception as e:
-            logger.warning(f"刷新 question_bank 失败: {e}")
+            logger.error(f"刷新 question_bank 失败: {e}")
 
         return {
             "status": "ok",

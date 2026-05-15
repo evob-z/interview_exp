@@ -144,7 +144,7 @@ def cmd_sync(args):
        c. review - 生成独立复盘文件到 面试复盘/
     3. commit - 提交所有变更（如果 --auto-commit）
     """
-    print("\n=== 面经同步 ===")
+    logger.info("=== 面经同步 ===")
 
     # 确保输出目录存在
     review_output_path = Path(INTERVIEW_REPO_PATH) / REVIEW_OUTPUT_DIR
@@ -156,19 +156,19 @@ def cmd_sync(args):
     result = detector.detect_changes()
 
     if not result.has_changes:
-        print("[检测] 无需同步，没有发现变更")
-        print("=== 完成 ===\n")
+        logger.info("[检测] 无需同步，没有发现变更")
+        logger.info("=== 完成 ===")
         return
 
-    print(f"[检测] {result.summary()}")
+    logger.info(f"[检测] {result.summary()}")
     if result.new_raw_inputs:
-        print("  原始问题新文件:")
+        logger.info("  原始问题新文件:")
         for f in result.new_raw_inputs:
-            print(f"    - {Path(f).name}")
+            logger.info(f"    - {Path(f).name}")
     if result.new_interviews:
-        print("  根目录面试记录（兼容模式）:")
+        logger.info("  根目录面试记录（兼容模式）:")
         for f in result.new_interviews:
-            print(f"    - {Path(f).name}")
+            logger.info(f"    - {Path(f).name}")
 
     # 跟踪所有变更文件（用于 auto-commit）
     changed_files: list[str] = []
@@ -188,13 +188,13 @@ def cmd_sync(args):
     for interview_file in all_new_files:
         filename = Path(interview_file).name
         is_raw_input = interview_file in result.new_raw_inputs
-        print(f"\n--- 处理: {filename} {'(原始问题)' if is_raw_input else '(根目录)'} ---")
+        logger.info(f"--- 处理: {filename} {'(原始问题)' if is_raw_input else '(根目录)'} ---")
 
         # 对根目录文件执行文件名规范化（原始问题目录文件不强制规范化）
         if not is_raw_input:
             normalized_path = archiver.normalize_filename(interview_file)
             if normalized_path != interview_file:
-                print(f"[重命名] {filename} → {Path(normalized_path).name}")
+                logger.info(f"[重命名] {filename} → {Path(normalized_path).name}")
                 interview_file = normalized_path
                 filename = Path(interview_file).name
 
@@ -208,7 +208,7 @@ def cmd_sync(args):
         try:
             extraction = extractor.extract_questions(interview_file)
             if extraction:
-                print(f"[抽取] 从 {filename} 抽取 {len(extraction.questions)} 个问题")
+                logger.info(f"[抽取] 从 {filename} 抽取 {len(extraction.questions)} 个问题")
                 # 尝试从文件名解析日期
                 date_str = ""
                 date_match = re.search(r"(\d{6})", Path(interview_file).stem)
@@ -234,12 +234,11 @@ def cmd_sync(args):
                 # 文件已结构化，尝试直接解析
                 questions_data = _parse_structured_questions(interview_file)
                 if questions_data:
-                    print(f"[解析] 从 {filename} 解析 {len(questions_data)} 个已有问题")
+                    logger.info(f"[解析] 从 {filename} 解析 {len(questions_data)} 个已有问题")
                 else:
-                    print(f"[跳过] {filename} 无法解析出问题")
+                    logger.info(f"[跳过] {filename} 无法解析出问题")
         except Exception as e:
-            logger.error(f"抽取阶段出错: {e}")
-            print(f"[错误] 抽取失败: {e}")
+            logger.error(f"抽取阶段出错: {e}", exc_info=True)
 
         # b. 归档入问题库
         if questions_data:
@@ -251,10 +250,10 @@ def cmd_sync(args):
                     for aq in archive_result.archived_questions:
                         by_file[aq["target_file"]].append(aq["question_id"])
 
-                    print("[归档] 归档完成：")
+                    logger.info("[归档] 归档完成：")
                     for target_file, q_ids in by_file.items():
                         id_range = f"{q_ids[0]}-{q_ids[-1]}" if len(q_ids) > 1 else q_ids[0]
-                        print(f"  - {target_file}: +{len(q_ids)} 题 ({id_range})")
+                        logger.info(f"  - {target_file}: +{len(q_ids)} 题 ({id_range})")
                         sync_summary["updated_banks"].add(target_file)
                         # 记录变更的问题库文件
                         bank_path = str(Path(INTERVIEW_REPO_PATH) / "问题库" / target_file)
@@ -264,10 +263,9 @@ def cmd_sync(args):
                     sync_summary["question_count"] += len(archive_result.archived_questions)
 
                 if archive_result.skipped_duplicates:
-                    print(f"  [去重] 跳过 {len(archive_result.skipped_duplicates)} 个重复问题")
+                    logger.info(f"  [去重] 跳过 {len(archive_result.skipped_duplicates)} 个重复问题")
             except Exception as e:
-                logger.error(f"归档阶段出错: {e}")
-                print(f"[错误] 归档失败: {e}")
+                logger.error(f"归档阶段出错: {e}", exc_info=True)
 
         # c. 生成独立复盘文件到 面试复盘/
         try:
@@ -276,15 +274,14 @@ def cmd_sync(args):
                 extracted_data=extracted_meta,
                 output_dir=str(review_output_path),
             )
-            print(f"[复盘] 独立复盘文件已生成: {Path(review_result.output_file).name}")
+            logger.info(f"[复盘] 独立复盘文件已生成: {Path(review_result.output_file).name}")
             if review_result.top_concerns:
-                print(f"  面试官最关注: {', '.join(review_result.top_concerns[:3])}")
+                logger.info(f"  面试官最关注: {', '.join(review_result.top_concerns[:3])}")
             sync_summary["reviewed"] = True
             sync_summary["review_files"].append(Path(review_result.output_file).name)
             changed_files.append(review_result.output_file)
         except Exception as e:
-            logger.error(f"复盘阶段出错: {e}")
-            print(f"[错误] 复盘失败: {e}")
+            logger.error(f"复盘阶段出错: {e}", exc_info=True)
 
     # 3. 更新同步时间
     detector.update_last_sync_time()
@@ -316,7 +313,7 @@ def cmd_sync(args):
             print("[提交] 提交失败或暂存区无更改")
 
     # 最终摘要
-    print("\n=== 完成 ===\n")
+    logger.info("=== 完成 ===")
 
 
 def cmd_detect(args):

@@ -97,14 +97,14 @@ async def initialize_profile():
                                 ],
                             })
         except Exception as e:
-            logger.warning(f"从问题库收集面试记录失败: {e}")
+            logger.debug(f"从问题库收集面试记录失败: {e}")
 
         # 3. 读取投递情况
         excel_data = None
         try:
             excel_data = excel_reader.read()
         except Exception as e:
-            logger.warning(f"读取投递情况失败: {e}")
+            logger.debug(f"读取投递情况失败: {e}")
 
         # 4. 初始化画像
         profile = profile_manager.initialize(

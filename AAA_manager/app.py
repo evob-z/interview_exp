@@ -1,6 +1,7 @@
 """面试助手 Web 服务入口"""
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -10,6 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import config
 from api.routes import qa, profile, sync, stats, history, followup, asr, prepare
+from logger import get_logger
+
+api_logger = get_logger("api")
 
 app = FastAPI(
     title="面试助手",
@@ -24,6 +28,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+    # 仅记录 API 调用，跳过静态文件
+    if request.url.path.startswith("/api/"):
+        api_logger.info(f"{request.method} {request.url.path} → {response.status_code} ({duration:.2f}s)")
+    return response
+
 
 # 注册路由
 app.include_router(qa.router, prefix="/api/qa", tags=["问答"])

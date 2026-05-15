@@ -351,10 +351,12 @@ def generate_review_file(
     # 1. 读取面经文件内容
     path = Path(source_file)
     if not path.exists():
+        logger.error(f"面经文件不存在: {source_file}")
         raise FileNotFoundError(f"面经文件不存在: {source_file}")
 
     content = path.read_text(encoding="utf-8")
     if not content.strip():
+        logger.error(f"面经文件为空: {source_file}")
         raise ValueError(f"面经文件为空: {source_file}")
 
     logger.info(f"文件读取成功，长度: {len(content)} 字符")

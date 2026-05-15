@@ -90,7 +90,7 @@ async def get_stats():
         try:
             excel_stats = excel_reader.get_stats()
         except Exception as e:
-            logger.warning(f"读取投递统计失败: {e}")
+            logger.debug(f"读取投递统计失败: {e}")
 
         # 4. 最近面试
         recent_interviews = interviews[:5]

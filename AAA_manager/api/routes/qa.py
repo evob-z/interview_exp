@@ -48,7 +48,7 @@ def _load_qa_prompt() -> str:
         if prompt_file.exists():
             return prompt_file.read_text(encoding="utf-8")
     except Exception as e:
-        logger.warning(f"加载 QA prompt 失败: {e}")
+        logger.error(f"加载 QA prompt 失败: {e}")
     # Fallback
     return (
         "你是一个专业的面试教练助手。根据用户的问题和知识库内容，给出面试级别的回答。\n\n"
@@ -149,7 +149,7 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
         boost = detect_project_boost(question)
         qa_results = question_bank.search(question, top_k=5, boost_categories=boost)
     except Exception as e:
-        logger.warning(f"问题库搜索失败: {e}")
+        logger.error(f"问题库搜索失败: {e}")
 
     # 2. 搜索项目文档
     project_results = []
@@ -297,7 +297,7 @@ async def ask_question(req: QARequest):
                 append_message(req.session_id, "user", req.question, mode=req.mode)
                 append_message(req.session_id, "assistant", answer, sources=[s.get("text", "") for s in sources] if sources else [])
         except Exception as e:
-            logger.warning(f"保存历史记录失败: {e}")
+            logger.error(f"保存历史记录失败: {e}")
 
         return QAResponse(
             answer=answer,
@@ -380,7 +380,7 @@ async def ask_question_stream(req: QARequest):
                     # 输出搜索摘要给用户
                     yield f"data: {json.dumps({'type': 'content', 'data': search_snippets}, ensure_ascii=False)}\n\n"
             except Exception as e:
-                logger.warning(f"网络搜索失败: {e}")
+                logger.error(f"网络搜索失败: {e}")
 
             # 3. 构建 LLM 消息（在线程池，因为可能有同步IO）
             try:

@@ -5,6 +5,7 @@ archiver.py - 归档分类模块
 """
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -155,7 +156,8 @@ def generate_answer(question_text: str, category: str, source_label: str) -> dic
             ctx = reader.get_context(project_name, max_tier=2)
             if ctx:
                 project_context = ctx
-                logger.debug(f"获取到项目上下文: {project_name} ({len(ctx)} 字符)")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"获取到项目上下文: {project_name} ({len(ctx)} 字符)")
         except Exception as e:
             logger.warning(f"获取项目上下文失败 ({project_name}): {e}")
 
@@ -173,7 +175,8 @@ def generate_answer(question_text: str, category: str, source_label: str) -> dic
             if results:
                 snippets = [r.get("content", "") for r in results if r.get("content")]
                 search_context = "\n".join(snippets[:3])
-                logger.debug(f"网络搜索获取 {len(snippets)} 条参考")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"网络搜索获取 {len(snippets)} 条参考")
         except Exception as e:
             logger.warning(f"网络搜索失败: {e}")
 
@@ -217,10 +220,11 @@ def generate_answer(question_text: str, category: str, source_label: str) -> dic
         return {"points": points, "speech": speech}
 
     except json.JSONDecodeError as e:
-        logger.error(f"LLM 返回 JSON 解析失败: {e}")
+        logger.error(f"LLM 返回 JSON 解析失败: {e}", exc_info=True)
+        logger.debug(f"原始返回内容: {response_text[:500]}")
         return {"points": [], "speech": ""}
     except Exception as e:
-        logger.error(f"生成回答失败: {e}")
+        logger.error(f"生成回答失败: {e}", exc_info=True)
         return {"points": [], "speech": ""}
 
 
@@ -259,7 +263,7 @@ def get_interview_date(company: str) -> str | None:
         with open(dates_file, "r", encoding="utf-8") as f:
             records = json.load(f)
     except (json.JSONDecodeError, IOError) as e:
-        logger.error(f"读取 .interview_dates.json 失败: {e}")
+        logger.error(f"读取 .interview_dates.json 失败: {e}", exc_info=True)
         return None
 
     # 模糊匹配公司名：支持部分匹配（如 "蚂蚁" 匹配 "蚂蚁集团"）
@@ -317,7 +321,7 @@ def normalize_filename(file_path: str) -> str:
                 logger.info(f"文件重命名: {filename} → {new_name}")
                 return str(new_path)
             except OSError as e:
-                logger.error(f"重命名失败: {e}")
+                logger.error(f"重命名失败: {e}", exc_info=True)
                 return file_path
 
     logger.info(f"无法规范化文件名，保持原样: {filename}")
@@ -337,7 +341,7 @@ def get_next_question_id(file_path: str) -> int:
     try:
         content = path.read_text(encoding="utf-8")
     except IOError as e:
-        logger.error(f"读取文件失败 {file_path}: {e}")
+        logger.error(f"读取文件失败 {file_path}: {e}", exc_info=True)
         return 1
 
     # 匹配所有 Q{N} 格式的编号（支持 ## Q1、### Q1 等各级标题）
@@ -497,7 +501,7 @@ def archive_questions(
 
         # 生成 AI 回答（含进度提示）
         display_text = q_text[:20] + ("..." if len(q_text) > 20 else "")
-        print(f"  [{pending_index}/{total}] 正在生成: {display_text}")
+        logger.info(f"  [{pending_index}/{total}] 正在生成: {display_text}")
 
         answer = generate_answer(q_text, category, source_label)
 
