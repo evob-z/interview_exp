@@ -7,7 +7,7 @@
 > - 功能概览与架构
 > - 快速开始（环境准备、依赖安装、配置）
 > - Web 界面与 CLI 命令
-> - 配置项详解（含 `PROJECT_CONFIGS`）
+> - 配置项详解（`projects.yaml` + `.env`）
 > - API 接口列表
 > - 测试与贡献指南
 
@@ -33,6 +33,7 @@
 | `data/` | 会话与画像（gitignore） |
 | `logs/` | 运行日志（gitignore） |
 | `.env.example` | 环境变量模板 |
+| `projects.yaml.example` | 项目元信息模板（项目别名、文档路径、通用题库分类，单一真相源） |
 | `requirements.txt` | 依赖列表 |
 
 ---
@@ -45,7 +46,8 @@ conda activate interview_exp
 
 cd AAA_manager
 pip install -r requirements.txt
-cp .env.example .env   # 填入 API Key
+cp .env.example .env                       # 填入 API Key 与本地路径
+cp projects.yaml.example projects.yaml     # 填入你的项目别名与文档路径
 
 python app.py          # 启动 Web (http://127.0.0.1:8000)
 # 或

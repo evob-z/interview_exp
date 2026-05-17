@@ -63,6 +63,7 @@ interview_exp/
 │   ├── extractor.py archiver.py reviewer.py preparer.py
 │   ├── core/                   # web_searcher.py / asr_xunfei.py / prepare_agent.py
 │   ├── .env.example            # 环境变量模板
+│   ├── projects.yaml.example   # 项目元信息模板（单一真相源）
 │   └── requirements.txt
 ├── 面试原始问题/               # 原始面试问题（个人数据，gitignore）
 ├── 面试复盘/                   # 自动生成的复盘报告（个人数据）
@@ -113,17 +114,29 @@ cp .env.example .env
 # - XUNFEI_APP_ID/API_KEY/API_SECRET + ENABLE_VOICE_INPUT=true（可选，启用语音输入）
 ```
 
-### 4. 配置项目规则（可选）
+### 4. 配置项目元信息
+
+```bash
+cp projects.yaml.example projects.yaml
+# 编辑 projects.yaml：声明你的项目名称、本地路径、文档清单、别名
+# 这是配置项目识别 / 归档分类 / 文档检索的【单一真相源】
+```
+
+> `projects.yaml` 含本地路径与项目别名，已在 `.gitignore` 中排除，不会被提交。
+> 项目分类、归档目标文件、抽取 prompt 的项目枚举均由此文件自动派生，无需再手工同步多个文件。
+
+### 5. 配置项目规则（可选）
 
 ```bash
 cd ..
 cp .rules.example .rules
-# 编辑 .rules：声明本地项目路径与名称映射，用于问答时检索项目上下文
+# 编辑 .rules：仅声明 IDE Agent 工作时可访问的本地项目根路径
+# （项目别名映射已迁移至 projects.yaml，.rules 不再承担该职责）
 ```
 
 > `.rules` 含本地路径，已在 `.gitignore` 中排除，不会被提交。
 
-### 5. 启动 Web 服务
+### 6. 启动 Web 服务
 
 ```bash
 cd AAA_manager
@@ -131,7 +144,7 @@ python app.py
 # 浏览器访问 http://127.0.0.1:8000
 ```
 
-### 6. 第一次使用
+### 7. 第一次使用
 
 1. 将面试原始问题文件放入 `面试原始问题/` 目录（文件名格式：`公司_类型_YYMMDD_轮次.md`）
 2. 运行 `python main.py sync 文件名.md` 执行全流程
@@ -185,7 +198,15 @@ python main.py export-session <session_id> [--name 文件名] [--rewrite]
 
 ## 配置说明
 
-所有配置通过 `AAA_manager/.env` 管理：
+新用户**只需修改 2 个文件**即可完成配置：
+
+| 文件 | 作用 | 是否必需 |
+|------|------|----------|
+| `AAA_manager/.env` | API Key、本地路径、功能开关 | 必需 |
+| `AAA_manager/projects.yaml` | 项目元信息（别名、文档路径、题库分类） | 必需（决定归档分类与项目识别） |
+| `.rules` | IDE Agent 项目路径声明 | 可选 |
+
+### `.env` 配置项
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -206,14 +227,43 @@ python main.py export-session <session_id> [--name 文件名] [--rewrite]
 | `PREP_QUESTION_COUNT` | 岗位预测默认题数 | `20` |
 | `PREP_AGENT_MAX_ITERS` | Agent LLM 请求上限（含工具调用轮次） | `8` |
 | `PREP_AGENT_FALLBACK` | Agent 异常时回退线性流程 | `true` |
-| `PROJECT_CONFIGS` | 项目文档配置（`名称:路径:文件;...`） | - |
+| `PROJECT_CONFIGS` | 项目文档配置（`名称:路径:文件;...`），**留空则自动从 `projects.yaml` 派生** | - |
 | `ENABLE_WEB_SEARCH` | 是否启用网络搜索 | `true` |
 | `SEARCH_API_KEY` | 搜索 API 密钥 | - |
 | `SEARCH_API_PROVIDER` | 搜索提供商（tavily / bing / serper） | `tavily` |
 | `XUNFEI_APP_ID` / `XUNFEI_API_KEY` / `XUNFEI_API_SECRET` | 讯飞 ASR 凭证 | - |
 | `WEB_HOST` / `WEB_PORT` | Web 服务监听 | `127.0.0.1:8000` |
 
-### PROJECT_CONFIGS 详解
+### `projects.yaml` 详解
+
+`projects.yaml` 是**项目元信息的唯一真相源**，用一个文件统一表达：
+
+- **项目识别别名**：归档时用于把"晓海"、"MLAW" 这类口头/简称映射到 `项目-law_sea`
+- **题库目标文件**：每个项目对应 `问题库/项目-<name>.md`，由 yaml 自动派生
+- **抽取 Prompt 项目枚举**：`extract_system.md` 中的项目分类清单由 yaml 渲染注入
+- **`PROJECT_CONFIGS` 派生源**：若 `.env` 未显式提供 `PROJECT_CONFIGS`，则由 yaml 中的 `path` + `docs` 自动拼装
+
+**最小示例**：
+
+```yaml
+projects:
+  - name: my_project              # 题库文件名将是 项目-my_project.md
+    display: 我的项目（用于展示）
+    path: D:/code/my_project      # 项目本地根路径
+    docs: [README.md, ARCHITECTURE.md]
+    aliases: [我的项目, MyProj]    # 归档时用这些别名识别
+    description: 一句话项目简介
+
+generic_categories:
+  - name: AI_Coding
+    description: AI 编程题
+  - name: 八股
+    description: 通用技术问题
+```
+
+> 修改 `projects.yaml` 后无需重启脚本即可生效（每次进程启动时加载）。新增项目只需在此处加一项即可，无需再改 `config.py` / `archiver.py` / `extract_system.md`。
+
+### `PROJECT_CONFIGS` 详解（自动派生 / 手动覆盖）
 
 `PROJECT_CONFIGS` 是**项目理解能力的入口**。注册后，`ProjectReader` 会对每个项目自动执行 4 层渐进式文档发现：
 
@@ -230,7 +280,7 @@ python main.py export-session <session_id> [--name 文件名] [--rewrite]
 PROJECT_CONFIGS=project_a:/path/to/project_a:README.md;project_b:/path/to/project_b:README.md
 ```
 
-> 未在此注册的项目无法被 `archive` 入库时获取项目上下文。新增项目后务必同步更新此配置。
+> 推荐**留空** `PROJECT_CONFIGS`，由 `projects.yaml` 统一管理；只有需要覆盖 yaml 的特殊场景才在 `.env` 中显式设置。
 
 ### 配置开关（在 `config.py` 中）
 
@@ -299,7 +349,7 @@ pre-commit install
 
 ## 技术栈
 
-Python 3.11 · FastAPI + Uvicorn · OpenAI SDK（DeepSeek / Qwen 兼容）· websockets（讯飞 ASR）· pdfplumber · openpyxl · httpx · GitPython · python-dotenv
+Python 3.11 · FastAPI + Uvicorn · OpenAI SDK（DeepSeek / Qwen 兼容）· websockets（讯飞 ASR）· pdfplumber · openpyxl · httpx · GitPython · python-dotenv · PyYAML
 
 ---
 
