@@ -24,7 +24,7 @@
 | `extractor.py` `archiver.py` `reviewer.py` `preparer.py` | 复盘流水线核心模块 |
 | `detector.py` `git_ops.py` `logger.py` | 变更检测 / Git 操作 / 日志 |
 | `api/routes/` | FastAPI 路由：qa / profile / history / followup / asr / sync / stats / prepare |
-| `core/` | `web_searcher.py`（Tavily / Bing / Serper）、`asr_xunfei.py`（讯飞流式 ASR） |
+| `core/` | `web_searcher.py`（Tavily / Bing / Serper）、`asr_xunfei.py`（讯飞流式 ASR）、`prepare_agent.py`（岗位预测 Pydantic AI Agent） |
 | `knowledge/` | `question_bank.py` / `project_reader.py` / `resume_reader.py` / `excel_reader.py` |
 | `profile/` | `profile_manager.py`（用户画像） |
 | `frontend/static/` | Web 前端（index.html / app.js / style.css） |

@@ -36,7 +36,7 @@
 | 分层项目理解 | 4 层渐进式文档读取，智能构建项目上下文 | 问答时自动调用 |
 | 投递状态追踪 | Excel 颜色自动识别投递状态（红 / 橙 / 黄 / 绿） | Web 画像面板 |
 | 多轮截断 | 自动保留最近 N 轮对话，控制上下文长度 | 自动 |
-| 岗位针对性备战 | 面试前联网搜 JD → LLM 出题 → 写入 `岗位预测/` 且自动入题库 | CLI `prepare` / Web |
+| 岗位针对性备战 | 面试前 Agent 自主搜 JD（可选多轮补充搜索）→ 结合画像/项目出题 → 自评迭代优化 → 写入 `岗位预测/` 且自动入题库 | CLI `prepare` / Web |
 | 统计面板 | 题库统计、面试次数、投递情况汇总 | Web API |
 | 空对话自动清理 | 启动时自动删除无消息空会话（保护 60 秒内新建） | 自动 |
 | 历史对话批量处理 | 删除 / 一条龙（导出 → 复盘 → 入库）历史会话 | Web 左侧边栏 |
@@ -61,6 +61,7 @@ interview_exp/
 │   ├── app.py main.py          # Web / CLI 入口
 │   ├── config.py llm_client.py # 配置 / LLM 调用
 │   ├── extractor.py archiver.py reviewer.py preparer.py
+│   ├── core/                   # web_searcher.py / asr_xunfei.py / prepare_agent.py
 │   ├── .env.example            # 环境变量模板
 │   └── requirements.txt
 ├── 面试原始问题/               # 原始面试问题（个人数据，gitignore）
@@ -171,7 +172,7 @@ python main.py archive <file>
 # 全流程串联：extract → review → archive
 python main.py sync <file> [--type transcript|chat|structured]
 
-# 岗位针对性备战：搜 JD + LLM 出题，写入 岗位预测/ 并自动入题库
+# 岗位针对性备战：Agent 模式，自主搜索 + 出题 + 自评迭代（异常时自动降级线性流程）
 python main.py prepare 字节跳动_AI应用开发实习生-AI数据与安全_260512
 # 或显式参数
 python main.py prepare --company 字节跳动 --position "AI应用开发实习生" --date 260512 --count 15
@@ -203,6 +204,8 @@ python main.py export-session <session_id> [--name 文件名] [--rewrite]
 | `COMPANY_EXCEL_PATH` | 投递记录 Excel 路径 | - |
 | `PREP_OUTPUT_DIR` | 岗位预测题库目录 | `岗位预测` |
 | `PREP_QUESTION_COUNT` | 岗位预测默认题数 | `20` |
+| `PREP_AGENT_MAX_ITERS` | Agent LLM 请求上限（含工具调用轮次） | `8` |
+| `PREP_AGENT_FALLBACK` | Agent 异常时回退线性流程 | `true` |
 | `PROJECT_CONFIGS` | 项目文档配置（`名称:路径:文件;...`） | - |
 | `ENABLE_WEB_SEARCH` | 是否启用网络搜索 | `true` |
 | `SEARCH_API_KEY` | 搜索 API 密钥 | - |
