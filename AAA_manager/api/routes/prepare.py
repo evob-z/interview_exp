@@ -20,6 +20,7 @@ class PrepareRequest(BaseModel):
     position: str
     date: str | None = None
     count: int | None = None
+    department: str = ""
 
 
 # 运行态（避免并发重复出题）
@@ -51,6 +52,7 @@ async def run_prepare(req: PrepareRequest):
                 company=company,
                 position=position,
                 date=(req.date or None),
+                department=req.department,
                 question_count=req.count,
             ),
         )
@@ -67,12 +69,16 @@ async def run_prepare(req: PrepareRequest):
             "company": result.company,
             "position": result.position,
             "date": result.date,
+            "department": result.department,
             "output_file": result.output_file,
             "output_filename": Path(result.output_file).name,
             "question_count": result.question_count,
             "jd_snippet_count": result.jd_snippet_count,
             "jd_source_count": result.jd_source_count,
             "elapsed_sec": round(result.elapsed_sec, 2),
+            "used_agent": result.used_agent,
+            "agent_iterations": result.agent_iterations,
+            "quality_score": round(result.quality_score, 3),
             "hint": "已自动纳入模拟面试检索，可直接搜索复习",
         }
     except ValueError as e:

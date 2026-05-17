@@ -28,6 +28,8 @@ AAA_manager/data/chat_history.jsonl
 AAA_manager/logs/*.log
 
 # === 个人面经与知识库（隐私数据） ===
+岗位预测/*
+!岗位预测/.gitkeep
 问题库/*
 !问题库/.gitkeep
 面试原始问题/*

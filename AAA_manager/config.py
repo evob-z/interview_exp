@@ -47,6 +47,12 @@ PREP_OUTPUT_DIR = os.getenv("PREP_OUTPUT_DIR", "岗位预测")
 PREP_OUTPUT_PATH: Path = INTERVIEW_REPO_PATH / PREP_OUTPUT_DIR
 PREP_QUESTION_COUNT = int(os.getenv("PREP_QUESTION_COUNT", "20"))  # 默认每次生成的预测题数
 
+# === 岗位预测 Agent（Pydantic AI）配置 ===
+# Agent 总 LLM 请求次数上限（含工具调用循环）；超限抛 UsageLimitExceeded
+PREP_AGENT_MAX_ITERS = int(os.getenv("PREP_AGENT_MAX_ITERS", "8"))
+# Agent 异常时是否回退到旧线性流水线（默认 true，零回归保底）
+PREP_AGENT_FALLBACK = os.getenv("PREP_AGENT_FALLBACK", "true").lower() == "true"
+
 # 项目文档配置：格式 "项目名:路径:文档文件1,文档文件2;项目名2:路径2:文档文件"
 PROJECT_CONFIGS = os.getenv("PROJECT_CONFIGS", "")
 

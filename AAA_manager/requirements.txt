@@ -8,6 +8,9 @@ openpyxl>=3.1.0
 httpx>=0.24.0,<0.28
 websockets>=12.0
 
+# --- agentic ---
+# 岗位预测使用手写 ReAct Loop，直接复用 openai SDK 的 function calling，无额外依赖
+
 # --- testing ---
 pytest>=8.0
 pytest-mock>=3.12

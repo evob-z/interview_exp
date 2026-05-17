@@ -460,9 +460,13 @@ def cmd_archive(args):
 
 def cmd_prepare(args):
     """岗位针对性预测题生成：搜 JD → 结合简历项目 → LLM 出题 → 写入 岗位预测/"""
-    # 优先使用 spec 位置参数，否则使用 --company/--position/--date
+    # 优先使用 spec 位置参数，否则使用 --company/--position/--department/--date
+    department = getattr(args, "department", "") or ""
     if getattr(args, "spec", None):
-        company, position, date = preparer.parse_spec(args.spec)
+        company, position, date, spec_dept = preparer.parse_spec(args.spec)
+        # --department 显式参数优先于 spec 解析出的部门
+        if not department and spec_dept:
+            department = spec_dept
         # 允许 --date 覆盖 spec 中的日期
         if getattr(args, "date", None):
             date = args.date
@@ -472,13 +476,15 @@ def cmd_prepare(args):
         date = getattr(args, "date", None)
 
     if not company or not position:
-        print("[错误] 必须提供公司与岗位。示例：python main.py prepare 字节跳动_AI应用开发实习生_260512")
-        print("      或：python main.py prepare --company 字节跳动 --position AI应用开发实习生")
+        print("[错误] 必须提供公司与岗位。示例：python main.py prepare 京东_后端开发工程师")
+        print("      或：python main.py prepare --company 京东 --position 后端开发工程师 --department CHO体系")
         return
 
     print("\n=== 岗位预测题生成 ===")
     print(f"公司: {company}")
     print(f"岗位: {position}")
+    if department:
+        print(f"部门: {department}")
     print(f"日期: {date or '今天'}")
 
     try:
@@ -486,6 +492,7 @@ def cmd_prepare(args):
             company=company,
             position=position,
             date=date,
+            department=department,
             question_count=getattr(args, "count", None),
         )
     except Exception as e:
@@ -594,6 +601,7 @@ def main():
   python main.py archive 蚂蚁_大厂_260423_一面技术.md
   python main.py review                   复盘最新面经
   python main.py prepare 字节跳动_AI应用开发实习生_260512   岗位预测出题
+  python main.py prepare 京东_CHO体系-企业信息化部_后端开发工程师   带部门
         """,
     )
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
@@ -647,10 +655,11 @@ def main():
     )
     prepare_parser.add_argument(
         "spec", nargs="?", default=None,
-        help="简写格式：公司_岗位_YYMMDD（日期可省略）"
+        help="简写格式：公司_[部门_...]岗位_[YYMMDD]（日期可省略，部门可选）"
     )
     prepare_parser.add_argument("--company", help="公司名（与 spec 二选一）")
     prepare_parser.add_argument("--position", help="岗位名")
+    prepare_parser.add_argument("--department", help="部门/团队名（可选）")
     prepare_parser.add_argument("--date", help="面试日期 YYMMDD，默认今天")
     prepare_parser.add_argument("--count", type=int, default=None, help="期望题数（默认读 config）")
 

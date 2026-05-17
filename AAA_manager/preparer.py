@@ -38,11 +38,16 @@ class PrepareResult:
     company: str
     position: str
     date: str
+    department: str = ""
     output_file: str = ""
     question_count: int = 0
     jd_source_count: int = 0
     jd_snippet_count: int = 0
     elapsed_sec: float = 0.0
+    # Agent 路径附加字段（fallback 走线性流程时为默认值）
+    agent_iterations: int = 0
+    quality_score: float = 0.0
+    used_agent: bool = False
 
 
 # ──────────────────────────────────────────────
@@ -80,9 +85,12 @@ def _default_date() -> str:
     return datetime.now().strftime("%y%m%d")
 
 
-def _build_output_filename(company: str, position: str, date: str) -> str:
-    """构造输出文件名：{公司}_{岗位}_{日期}.md"""
-    parts = [_sanitize_filename(company), _sanitize_filename(position), _sanitize_filename(date)]
+def _build_output_filename(company: str, position: str, date: str, department: str = "") -> str:
+    """构造输出文件名：{公司}_{部门_}_{岗位}_{日期}.md（无部门时省略）"""
+    if department:
+        parts = [_sanitize_filename(company), _sanitize_filename(department), _sanitize_filename(position), _sanitize_filename(date)]
+    else:
+        parts = [_sanitize_filename(company), _sanitize_filename(position), _sanitize_filename(date)]
     return "_".join(p for p in parts if p) + ".md"
 
 
@@ -189,15 +197,20 @@ def prepare_interview(
     company: str,
     position: str,
     date: str | None = None,
+    department: str = "",
     output_dir: str | None = None,
     question_count: int | None = None,
 ) -> PrepareResult:
     """
     生成岗位预测题库文件。
 
+    默认走 ReAct Agent 路径（自主决策搜索/出题/迭代）；
+    Agent 异常时若 PREP_AGENT_FALLBACK=true 则回退到线性流程。
+
     Args:
         company: 公司名（如 "字节跳动"）
         position: 岗位名（如 "AI应用开发实习生-AI数据与安全"）
+        department: 部门名（如 "CHO体系-企业信息化部"，可选）
         date: YYMMDD，默认为今天
         output_dir: 输出目录，默认 INTERVIEW_REPO_PATH / PREP_OUTPUT_DIR
         question_count: 题目数量建议值（LLM 最终题数以其判断为准）
@@ -213,8 +226,84 @@ def prepare_interview(
     date = date or _default_date()
     qc = question_count or PREP_QUESTION_COUNT
 
-    logger.info(f"岗位预测启动: company={company}, position={position}, date={date}, count={qc}")
+    logger.info(
+        f"岗位预测启动: company={company}, position={position}, department={department or '无'}, date={date}, count={qc}"
+    )
 
+    # 解析输出路径（agent 与 legacy 共用）
+    if output_dir:
+        out_dir = Path(output_dir)
+    else:
+        out_dir = Path(INTERVIEW_REPO_PATH) / PREP_OUTPUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    filename = _build_output_filename(company, position, date, department)
+    out_path = out_dir / filename
+
+    # ── Agent 路径 ──
+    try:
+        from core.prepare_agent import run_prepare_agent
+        body, meta = run_prepare_agent(company, position, date, qc, department=department)
+        if not body or not body.strip():
+            raise RuntimeError("Agent 返回空内容")
+    except Exception as e:
+        # 容错：根据配置决定是否回退线性流程
+        try:
+            import config as _cfg
+            fallback_enabled = bool(getattr(_cfg, "PREP_AGENT_FALLBACK", True))
+        except Exception:
+            fallback_enabled = True
+
+        logger.warning(
+            f"Agent 路径失败: {e}; fallback={fallback_enabled}"
+        )
+        if not fallback_enabled:
+            raise
+        return _legacy_prepare(company, position, date, qc, out_path, start_ts, department=department)
+
+    # ── 写文件 ──
+    body = body.strip()
+    if body.startswith("```"):
+        body = re.sub(r"^```[a-zA-Z]*\n", "", body, count=1)
+        body = re.sub(r"\n```\s*$", "", body, count=1)
+    out_path.write_text(body + "\n", encoding="utf-8")
+
+    q_count = len(re.findall(r"^#{2,4}\s*Q\d+[：:]", body, re.MULTILINE))
+    elapsed = (datetime.now() - start_ts).total_seconds()
+    logger.info(
+        f"岗位预测完成（agent）: 文件={out_path}, 题数={q_count}, "
+        f"迭代={meta.get('iterations_used', 0)}, 自评={meta.get('quality_score', 0):.2f}, "
+        f"JD 片段={meta.get('jd_snippet_count', 0)}, 耗时={elapsed:.1f}s"
+    )
+
+    return PrepareResult(
+        company=company,
+        position=position,
+        date=date,
+        department=department,
+        output_file=str(out_path),
+        question_count=q_count,
+        jd_source_count=int(meta.get("jd_source_count", 0)),
+        jd_snippet_count=int(meta.get("jd_snippet_count", 0)),
+        elapsed_sec=elapsed,
+        agent_iterations=int(meta.get("iterations_used", 0)),
+        quality_score=float(meta.get("quality_score", 0.0)),
+        used_agent=True,
+    )
+
+
+def _legacy_prepare(
+    company: str,
+    position: str,
+    date: str,
+    qc: int,
+    out_path: Path,
+    start_ts: datetime,
+    department: str = "",
+) -> PrepareResult:
+    """旧版线性流水线：搜JD → 读简历项目 → LLM 一次出题 → 写文件。
+
+    作为 Agent 路径的 fallback；输入参数已由 prepare_interview 预处理。
+    """
     # 1. 搜索 JD（异步 → 同步包装）
     try:
         loop = asyncio.new_event_loop()
@@ -236,8 +325,9 @@ def prepare_interview(
 
     # 4. 组装 messages
     system_prompt = _load_prepare_prompt()
+    dept_line = f"\n- 部门：{department}" if department else ""
     user_parts = [
-        f"## 公司与岗位\n- 公司：{company}\n- 岗位：{position}\n- 面试日期：{date}\n- 期望题数：约 {qc} 题（允许 ±3）",
+        f"## 公司与岗位\n- 公司：{company}{dept_line}\n- 岗位：{position}\n- 面试日期：{date}\n- 期望题数：约 {qc} 题（允许 ±3）",
         f"## JD 片段（来自网络搜索）\n\n{jd_context}",
         f"## 候选人简历摘要\n\n{resume_text or '（简历未能读取，请基于岗位要求合理出题）'}",
         f"## 候选人项目上下文\n\n{projects_text or '（暂无项目文档）'}",
@@ -249,7 +339,7 @@ def prepare_interview(
         {"role": "user", "content": "\n\n".join(user_parts)},
     ]
 
-    logger.info("调用 LLM 生成岗位预测题...")
+    logger.info("调用 LLM 生成岗位预测题（legacy 线性路径）...")
     report_text = chat_completion(
         messages=messages,
         temperature=0.6,
@@ -258,28 +348,18 @@ def prepare_interview(
     logger.info(f"LLM 生成成功，长度 {len(report_text)} 字符")
 
     # 5. 写文件
-    if output_dir:
-        out_dir = Path(output_dir)
-    else:
-        out_dir = Path(INTERVIEW_REPO_PATH) / PREP_OUTPUT_DIR
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = _build_output_filename(company, position, date)
-    out_path = out_dir / filename
-
-    # 清理 LLM 可能添加的代码围栏
     body = report_text.strip()
     if body.startswith("```"):
         body = re.sub(r"^```[a-zA-Z]*\n", "", body, count=1)
         body = re.sub(r"\n```\s*$", "", body, count=1)
     out_path.write_text(body + "\n", encoding="utf-8")
 
-    # 6. 统计题数（通过 Q{N} 正则）
+    # 6. 统计题数
     q_count = len(re.findall(r"^#{2,4}\s*Q\d+[：:]", body, re.MULTILINE))
 
     elapsed = (datetime.now() - start_ts).total_seconds()
     logger.info(
-        f"岗位预测完成: 文件={out_path}, 题数={q_count}, "
+        f"岗位预测完成（legacy）: 文件={out_path}, 题数={q_count}, "
         f"JD 片段={len(jd.get('jd_snippets', []))}, 耗时={elapsed:.1f}s"
     )
 
@@ -287,33 +367,59 @@ def prepare_interview(
         company=company,
         position=position,
         date=date,
+        department=department,
         output_file=str(out_path),
         question_count=q_count,
         jd_source_count=len(jd.get("source_urls", [])),
         jd_snippet_count=len(jd.get("jd_snippets", [])),
         elapsed_sec=elapsed,
+        agent_iterations=0,
+        quality_score=0.0,
+        used_agent=False,
     )
 
 
-def parse_spec(spec: str) -> tuple[str, str, str]:
+def parse_spec(spec: str) -> tuple[str, str, str, str]:
     """
-    解析 CLI 位置参数 spec，格式：'公司_岗位_YYMMDD'
-    最后一段若是 6 位数字视为日期，否则使用今天。
+    解析 CLI 位置参数 spec。
+
+    格式：'公司_[部门_...]岗位_[YYMMDD]'
+    - 最后一段若是 6 位纯数字 → 日期，否则日期用今天
+    - 倒数第二段（或 core 最后一段）→ 岗位
+    - 公司与岗位之间的所有段 → 部门（可为空）
+    - 如果只有公司名，岗位和部门均留空
+
+    返回 (company, position, date, department)
+
+    示例:
+        '京东_后端开发工程师' → ('京东', '后端开发工程师', '260517', '')
+        '京东_后端开发工程师_260512' → ('京东', '后端开发工程师', '260512', '')
+        '京东_CHO体系-企业信息化部_后端开发工程师' → ('京东', '后端开发工程师', '260517', 'CHO体系-企业信息化部')
+        '京东_CHO体系-企业信息化部_后端开发工程师_260512' → ('京东', '后端开发工程师', '260512', 'CHO体系-企业信息化部')
     """
     parts = spec.split("_")
-    if len(parts) >= 3 and re.fullmatch(r"\d{6}", parts[-1]):
+    if not parts or all(p == "" for p in parts):
+        return "", "", _default_date(), ""
+
+    # 最后一段若是 6 位数字 → 日期
+    if re.fullmatch(r"\d{6}", parts[-1]):
         date = parts[-1]
-        company = parts[0]
-        position = "_".join(parts[1:-1])
-    elif len(parts) == 2:
-        company, position = parts[0], parts[1]
-        date = _default_date()
-    elif len(parts) == 1:
-        # 只给了公司名也允许（岗位留空兜底）
-        company, position = parts[0], ""
-        date = _default_date()
+        core_parts = parts[:-1]
     else:
         date = _default_date()
-        company = parts[0]
-        position = "_".join(parts[1:])
-    return company, position, date
+        core_parts = parts
+
+    if not core_parts:
+        return "", "", date, ""
+
+    company = core_parts[0]
+
+    if len(core_parts) == 1:
+        # 只有公司名
+        return company, "", date, ""
+
+    # position = 最后一段; department = 公司与岗位之间的所有段
+    position = core_parts[-1]
+    department = "_".join(core_parts[1:-1]) if len(core_parts) > 2 else ""
+
+    return company, position, date, department
