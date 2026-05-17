@@ -19,6 +19,7 @@ from config import (
     QUESTION_BANK_PATH,
     RAW_INPUT_DIR,
     REVIEW_OUTPUT_DIR,
+    GIT_ENABLED,
 )
 from logger import get_logger
 
@@ -106,7 +107,11 @@ def detect_changes(repo_path: str = None) -> DetectionResult:
     else:
         logger.debug(f"原始问题目录不存在: {raw_input_path}")
 
-    # ── Git 相关检测（可选，仓库不存在时跳过）──
+    # ── Git 相关检测（由 GIT_ENABLED 控制，关闭时静默跳过）──
+    if not GIT_ENABLED:
+        logger.debug("Git 集成已关闭 (GIT_ENABLED=false)，跳过 Git 检测")
+        return result
+
     try:
         repo = git.Repo(path)
     except (git.InvalidGitRepositoryError, git.NoSuchPathError) as e:

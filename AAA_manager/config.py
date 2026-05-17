@@ -72,6 +72,9 @@ XUNFEI_API_SECRET: str = os.getenv("XUNFEI_API_SECRET", "")
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
 
+# === Git 集成 ===
+GIT_ENABLED = os.getenv("GIT_ENABLED", "false").lower() == "true"
+
 
 # 项目别名 → category 映射（用于检索加权）
 PROJECT_ALIASES: dict[str, str] = {

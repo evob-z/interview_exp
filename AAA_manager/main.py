@@ -24,12 +24,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 try:
     from logger import get_logger
-    from config import INTERVIEW_REPO_PATH, RAW_INPUT_DIR, REVIEW_OUTPUT_DIR
+    from config import INTERVIEW_REPO_PATH, RAW_INPUT_DIR, REVIEW_OUTPUT_DIR, GIT_ENABLED
     import detector
     import extractor
     import archiver
     import reviewer
-    import git_ops
+    if GIT_ENABLED:
+        import git_ops
     import preparer
     import exporter
 except ImportError as e:
@@ -287,7 +288,7 @@ def cmd_sync(args):
     detector.update_last_sync_time()
 
     # 4. 提交变更（如果 --auto-commit）
-    if args.auto_commit:
+    if hasattr(args, 'auto_commit') and args.auto_commit:
         repo_path = str(INTERVIEW_REPO_PATH)
         # 去重
         changed_files = list(set(changed_files))
@@ -601,7 +602,7 @@ def main():
     sync_parser = subparsers.add_parser("sync", help="全流程同步")
     sync_parser.add_argument(
         "--auto-commit", action="store_true", help="自动提交所有变更到 Git"
-    )
+    ) if GIT_ENABLED else None
     sync_parser.add_argument(
         "--dry-run", action="store_true", help="仅预览不实际执行提交"
     )
