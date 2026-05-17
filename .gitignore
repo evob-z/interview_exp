@@ -19,6 +19,7 @@ coverage.xml
 
 # === 环境与敏感信息 ===
 AAA_manager/.env
+AAA_manager/projects.yaml
 .env
 
 # === 运行时数据 ===

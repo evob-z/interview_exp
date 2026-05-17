@@ -1,0 +1,47 @@
+# =============================================================================
+# 候选人项目元信息（唯一真相源）
+#
+# 本文件被 config.py 自动加载，派生：
+#   - PROJECT_ALIASES        关键词 -> category（用于检索加权）
+#   - CATEGORY_FILE_MAP      category -> 题库文件名（archiver 入库依据）
+#   - extract_system.md      运行时注入项目分类清单（供 LLM 抽取分类）
+#
+# 用法：
+#   1. 复制为 projects.yaml（已被 .gitignore，包含真实信息不会提交）
+#   2. 按下方注释填写自己的项目；新增 / 删除项目只需改本文件
+#
+# 字段说明：
+#   name        必填。category 主键；对应题库文件 项目-{name}.md
+#   display     必填。中文展示名（README / Web 显示用）
+#   path        可选。项目源码或文档绝对路径（若填则自动注册到 PROJECT_CONFIGS）
+#   docs        可选。项目内的文档文件名列表（默认 [README.md]）
+#   aliases     必填。LLM 与检索识别项目的关键词；越细越准
+#   description 必填。一句话项目说明，会注入到抽取 prompt，供 LLM 判断分类
+# =============================================================================
+
+projects:
+  - name: project_a
+    display: 项目A中文名
+    path: /absolute/path/to/project_a
+    docs: [README.md]
+    aliases: [关键词1, 关键词2, 别名缩写]
+    description: 一句话讲清楚项目领域 / 核心技术 / 主要成果
+
+  - name: project_b
+    display: 项目B
+    path: /absolute/path/to/project_b
+    docs: [README.md, docs/architecture.md]
+    aliases: [关键词A, 关键词B]
+    description: 例如「合规审查 RAG，覆盖风电 / 环评等领域，Multi-HyDE + BM25 + RRF」
+
+  - name: project_c
+    display: 项目C
+    aliases: [关键词X, 关键词Y, SFT, 微调]
+    description: 例如「智能旅行顾问 Agent，0.6B 模型 SFT，Function Calling 多轮对话」
+
+# 通用题库（非项目类，固定两类，可按需增减）
+generic_categories:
+  - name: AI_Coding
+    description: AI 工具使用类问题（Cursor / Qoder / Skill / Rules / MCP 等）
+  - name: 八股
+    description: 技术原理类问题（RAG / Embedding / Rerank / BM25 / 微调 / Agent 范式 / HTTP 等）

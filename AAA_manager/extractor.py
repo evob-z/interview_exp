@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import INTERVIEW_REPO_PATH, RAW_INPUT_DIR
+from config import INTERVIEW_REPO_PATH, RAW_INPUT_DIR, PROJECTS_META, CATEGORY_FILE_MAP
 from llm_client import chat_completion
 from logger import get_logger
 
@@ -18,22 +18,22 @@ logger = get_logger("extractor")
 # prompts 目录定位
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
-# 精简版 fallback prompt（当文件不存在时使用）
-FALLBACK_SYSTEM_PROMPT = """你是一个面试问题抽取助手。从面试原始文本中抽取结构化问题清单。
+# 精简版 fallback prompt（当文件不存在时使用；分类清单在运行时拼接）
+_FALLBACK_TEMPLATE = """你是一个面试问题抽取助手。从面试原始文本中抽取结构化问题清单。
 规则：
 1. 识别显式问句和隐式追问
 2. 去口语化（去掉嗯、啊、对吧、就是等填充词）
 3. 同一主题连续追问标记 is_followup=true
-4. 根据内容给出分类建议：项目-law_sea / 项目-compliance_checker / 项目-Agent_SFT_SHENWEI / AI_Coding / 八股
+4. 根据内容给出分类建议：{categories}
 
 输出合法 JSON：
-{
+{{
   "company": "公司名",
   "company_type": "大厂|中厂|小厂|国企|外企",
   "round": "一面技术|二面技术|HR面|交叉面|主管面",
-  "questions": [{"id": 1, "text": "问题文本", "category_suggestion": "分类", "is_followup": false}],
-  "metadata": {"interviewer_intro": "", "notes": ""}
-}
+  "questions": [{{"id": 1, "text": "问题文本", "category_suggestion": "分类", "is_followup": false}}],
+  "metadata": {{"interviewer_intro": "", "notes": ""}}
+}}
 约束：不编造问题，不脑补答案，保持原始顺序。"""
 
 
@@ -56,19 +56,56 @@ class ExtractionResult:
     raw_file: str = ""      # 源文件路径
 
 
+def _render_category_block() -> tuple[str, str]:
+    """从 PROJECTS_META 构造 prompt 占位符内容。
+
+    Returns:
+        (project_categories_block, category_enum)
+        - project_categories_block: 多行 Markdown 列表，描述每类问题的判别关键词
+        - category_enum: '|' 分隔的全部 category 取值，供 JSON 示例
+    """
+    lines: list[str] = []
+    for p in PROJECTS_META.get("projects", []):
+        name = p.get("name")
+        if not name:
+            continue
+        aliases = p.get("aliases") or []
+        desc = p.get("description") or ""
+        keywords = "/".join(aliases) if aliases else name
+        suffix = f"——{desc}" if desc else ""
+        lines.append(f'- 项目相关（{keywords}）→ "项目-{name}"{suffix}')
+    for g in PROJECTS_META.get("generic_categories", []):
+        gname = g.get("name")
+        if not gname:
+            continue
+        gdesc = g.get("description") or ""
+        lines.append(f'- {gdesc or gname} → "{gname}"')
+
+    if not lines:
+        # projects.yaml 未配置时给一个最小兜底，避免 LLM 失去分类参考
+        lines = ['- 通用技术问题 → "八股"']
+
+    enum = "|".join(CATEGORY_FILE_MAP.keys()) or "八股"
+    return "\n".join(lines), enum
+
+
 def _load_system_prompt() -> str:
-    """加载 system prompt，优先从文件读取，不存在则用 fallback。"""
+    """加载 system prompt，优先从文件读取并渲染占位符，不存在则用 fallback。"""
+    project_block, enum = _render_category_block()
+
     prompt_file = PROMPTS_DIR / "extract_system.md"
     try:
         if prompt_file.exists():
             content = prompt_file.read_text(encoding="utf-8")
-            logger.debug(f"已加载 system prompt: {prompt_file}")
+            content = content.replace("{{PROJECT_CATEGORIES}}", project_block)
+            content = content.replace("{{CATEGORY_ENUM}}", enum)
+            logger.debug(f"已加载并渲染 system prompt: {prompt_file}")
             return content
     except Exception as e:
         logger.warning(f"读取 system prompt 失败: {e}")
 
     logger.info("使用 fallback system prompt")
-    return FALLBACK_SYSTEM_PROMPT
+    return _FALLBACK_TEMPLATE.format(categories=" / ".join(CATEGORY_FILE_MAP.keys()) or "八股")
 
 
 def detect_file_type(file_content: str) -> str | None:

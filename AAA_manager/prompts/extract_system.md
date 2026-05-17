@@ -25,11 +25,7 @@
 
 ### 分类建议
 根据问题内容给出归属建议：
-- 项目相关（晓海/海商法/MLAW）→ "项目-law_sea"
-- 项目相关（合规审查/风电/环评）→ "项目-compliance_checker"
-- 项目相关（旅行顾问/预研助手/0.6B/SFT微调）→ "项目-Agent_SFT_SHENWEI"
-- AI工具使用（Qoder/Cursor/Skill/Rules/MCP）→ "AI_Coding"
-- 技术原理（RAG/Embedding/Rerank/BM25/微调时机/Agent范式/HTTP）→ "八股"
+{{PROJECT_CATEGORIES}}
 
 ## 输出格式
 
@@ -43,7 +39,7 @@
     {
       "id": 1,
       "text": "去口语化后的问题文本",
-      "category_suggestion": "项目-law_sea|项目-compliance_checker|项目-Agent_SFT_SHENWEI|AI_Coding|八股",
+      "category_suggestion": "{{CATEGORY_ENUM}}",
       "is_followup": false
     }
   ],

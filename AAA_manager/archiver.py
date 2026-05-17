@@ -21,6 +21,7 @@ from config import (
     SEARCH_API_KEY,
     SEARCH_API_PROVIDER,
     BASE_DIR,
+    CATEGORY_FILE_MAP,
 )
 from logger import get_logger
 
@@ -32,14 +33,7 @@ _PROMPT_FILE = BASE_DIR / "prompts" / "archive_answer_system.md"
 # ──────────────────────────────────────────────
 # 分类规则映射
 # ──────────────────────────────────────────────
-
-CATEGORY_FILE_MAP = {
-    "项目-law_sea": "项目-law_sea.md",
-    "项目-compliance_checker": "项目-compliance_checker.md",
-    "项目-Agent_SFT_SHENWEI": "项目-Agent_SFT_SHENWEI.md",
-    "AI_Coding": "AI_Coding.md",
-    "八股": "八股.md",
-}
+# CATEGORY_FILE_MAP 现在从 config 导入（派生自 projects.yaml 单一真相源）
 
 # 文件名规范: {公司}_{类型}_{YYMMDD}_{场次}.md
 FILENAME_PATTERN = re.compile(

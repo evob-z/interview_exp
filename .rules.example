@@ -43,8 +43,5 @@ interview_exp/
 
 ## 项目映射
 
-| 项目名 | 中文名 | 问题库文件 |
-|---|---|---|
-| project_a | 项目A描述 | `项目-project_a.md` |
-| project_b | 项目B描述 | `项目-project_b.md` |
-| project_c | 项目C描述 | `项目-project_c.md` |
+> 项目元信息（名称 / 别名 / 题库文件 / 描述）的唯一真相源是 `AAA_manager/projects.yaml`。
+> 复制 `AAA_manager/projects.yaml.example` 后填写自己的项目即可，本文件不再重复维护。

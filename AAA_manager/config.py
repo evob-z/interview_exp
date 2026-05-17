@@ -1,10 +1,12 @@
 """
 config.py - 项目配置模块
-从 .env 文件加载配置，提供统一的配置访问接口。
+从 .env + projects.yaml 加载配置，提供统一的配置访问接口。
 """
 
 import os
 from pathlib import Path
+
+import yaml
 from dotenv import load_dotenv
 
 # 定位 AAA_manager 目录（基于本文件位置）
@@ -54,6 +56,7 @@ PREP_AGENT_MAX_ITERS = int(os.getenv("PREP_AGENT_MAX_ITERS", "8"))
 PREP_AGENT_FALLBACK = os.getenv("PREP_AGENT_FALLBACK", "true").lower() == "true"
 
 # 项目文档配置：格式 "项目名:路径:文档文件1,文档文件2;项目名2:路径2:文档文件"
+# 优先级：.env 中的 PROJECT_CONFIGS > projects.yaml 自动派生
 PROJECT_CONFIGS = os.getenv("PROJECT_CONFIGS", "")
 
 # === 网络搜索配置 ===
@@ -82,25 +85,59 @@ WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
 GIT_ENABLED = os.getenv("GIT_ENABLED", "false").lower() == "true"
 
 
+# =============================================================================
+# 项目元信息（唯一真相源：projects.yaml）
+# 派生 PROJECT_ALIASES / CATEGORY_FILE_MAP / 兜底 PROJECT_CONFIGS
+# =============================================================================
+PROJECTS_FILE: Path = BASE_DIR / "projects.yaml"
+
+
+def _load_projects_meta() -> dict:
+    """加载 projects.yaml；不存在或解析失败时返回空结构（不阻塞启动）。"""
+    if not PROJECTS_FILE.exists():
+        return {"projects": [], "generic_categories": []}
+    try:
+        with PROJECTS_FILE.open(encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        data.setdefault("projects", [])
+        data.setdefault("generic_categories", [])
+        return data
+    except Exception:
+        # 启动期不抛错；让上层 logger 在使用时报警
+        return {"projects": [], "generic_categories": []}
+
+
+PROJECTS_META: dict = _load_projects_meta()
+
 # 项目别名 → category 映射（用于检索加权）
 PROJECT_ALIASES: dict[str, str] = {
-    "旅行助手": "项目-Agent_SFT_SHENWEI",
-    "旅行顾问": "项目-Agent_SFT_SHENWEI",
-    "SHENWEI": "项目-Agent_SFT_SHENWEI",
-    "Agent_SFT": "项目-Agent_SFT_SHENWEI",
-    "微调": "项目-Agent_SFT_SHENWEI",
-    "晓海": "项目-law_sea",
-    "MLAW": "项目-law_sea",
-    "海商法": "项目-law_sea",
-    "law_sea": "项目-law_sea",
-    "实习": "项目-law_sea",
-    "合规": "项目-compliance_checker",
-    "中能建": "项目-compliance_checker",
-    "compliance": "项目-compliance_checker",
-    "合规审查": "项目-compliance_checker",
-    "合同审查": "项目-compliance_checker",
-    "合同审查助手": "项目-compliance_checker",
+    alias: f"项目-{p['name']}"
+    for p in PROJECTS_META.get("projects", [])
+    if p.get("name")
+    for alias in (p.get("aliases") or [])
 }
+
+# category → 题库文件名映射（archiver 入库依据）
+CATEGORY_FILE_MAP: dict[str, str] = {
+    f"项目-{p['name']}": f"项目-{p['name']}.md"
+    for p in PROJECTS_META.get("projects", [])
+    if p.get("name")
+}
+for _g in PROJECTS_META.get("generic_categories", []):
+    if _g.get("name"):
+        CATEGORY_FILE_MAP[_g["name"]] = f"{_g['name']}.md"
+
+# 若 .env 未提供 PROJECT_CONFIGS，则从 projects.yaml 自动派生
+if not PROJECT_CONFIGS:
+    _parts: list[str] = []
+    for _p in PROJECTS_META.get("projects", []):
+        _path = _p.get("path")
+        if not _path or not _p.get("name"):
+            continue
+        _docs = _p.get("docs") or ["README.md"]
+        _parts.append(f"{_p['name']}:{_path}:{','.join(_docs)}")
+    if _parts:
+        PROJECT_CONFIGS = ";".join(_parts)
 
 
 def get_active_provider(provider: str = None) -> tuple[str, str, str]:
