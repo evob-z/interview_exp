@@ -477,10 +477,14 @@ def archive_questions(
         # 确定目标文件
         target_filename = CATEGORY_FILE_MAP.get(category)
         if not target_filename:
-            logger.warning(
-                f"未知分类 '{category}'，归入八股。问题: {q_text[:30]}..."
-            )
-            target_filename = CATEGORY_FILE_MAP["八股"]
+            # 项目类分类（项目-xxx）即使未在 yaml 注册也按约定派生文件名
+            if category and category.startswith("项目-"):
+                target_filename = f"{category}.md"
+            else:
+                logger.warning(
+                    f"未知分类 '{category}'，归入八股。问题: {q_text[:30]}..."
+                )
+                target_filename = CATEGORY_FILE_MAP.get("八股", "八股.md")
 
         target_path = str(Path(QUESTION_BANK_PATH) / target_filename)
 

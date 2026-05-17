@@ -127,6 +127,9 @@ for _g in PROJECTS_META.get("generic_categories", []):
     if _g.get("name"):
         CATEGORY_FILE_MAP[_g["name"]] = f"{_g['name']}.md"
 
+# 兜底：保证 "八股" 永远存在，避免 projects.yaml 缺失/未配置时 archiver 失败
+CATEGORY_FILE_MAP.setdefault("八股", "八股.md")
+
 # 若 .env 未提供 PROJECT_CONFIGS，则从 projects.yaml 自动派生
 if not PROJECT_CONFIGS:
     _parts: list[str] = []
