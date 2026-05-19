@@ -45,12 +45,6 @@ AAA_manager/logs/notepad_*.md
 公司投递情况/*
 !公司投递情况/.gitkeep
 暂时不用/
-信通院_*.md
-创新奇智_*.md
-北京智能知识*.md
-珠海博贤_*.md
-美团_*.md
-蚂蚁_*.md
 .interview_dates.json
 
 # === 临时文件 ===
@@ -72,3 +66,4 @@ temp/
 .DS_Store
 Thumbs.db
 Desktop.ini
+AAA_manager/.last_sync_time
