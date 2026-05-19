@@ -6,6 +6,9 @@ AAA_manager - 面经管理程序
 
 用法:
     python main.py sync [--auto-commit] [--dry-run]
+    python main.py sync <file> [--auto-commit] [--dry-run]
+    python main.py sync --reflect
+    python main.py sync <file> --reflect
     python main.py detect
     python main.py extract <file>
     python main.py archive <file>
@@ -29,6 +32,7 @@ try:
     import extractor
     import archiver
     import reviewer
+    import reflector
     if GIT_ENABLED:
         import git_ops
     import preparer
@@ -138,11 +142,12 @@ def _get_source_label_from_filename(file_path: str) -> str:
 def cmd_sync(args):
     """
     全流程同步:
-    1. detect - 检测变更（优先 面试原始问题/，兼容根目录）
+    1. 指定文件模式（args.file 非空）或检测变更模式（扫描 面试原始问题/）
     2. 对每个新文件:
        a. extract - 抽取问题（如果需要）
-       b. archive - 归档入问题库
-       c. review - 生成独立复盘文件到 面试复盘/
+       b. [--reflect] 反思交互
+       c. archive - 归档入问题库
+       d. review - 生成独立复盘文件到 面试复盘/
     3. commit - 提交所有变更（如果 --auto-commit）
     """
     logger.info("=== 面经同步 ===")
@@ -153,23 +158,34 @@ def cmd_sync(args):
     raw_input_path = Path(INTERVIEW_REPO_PATH) / RAW_INPUT_DIR
     raw_input_path.mkdir(parents=True, exist_ok=True)
 
-    # 1. 检测变更
-    result = detector.detect_changes()
+    # 1. 检测变更（或使用指定文件）
+    single_file_mode = bool(args.file)
+    if single_file_mode:
+        file_path = _resolve_file_path(args.file)
+        if not Path(file_path).exists():
+            logger.error(f"[错误] 文件不存在: {file_path}")
+            return
+        logger.info(f"[指定文件] {Path(file_path).name}")
+        all_new_files = [file_path]
+    else:
+        result = detector.detect_changes()
+        if not result.has_changes:
+            logger.info("[检测] 无需同步，没有发现变更")
+            logger.info("=== 完成 ===")
+            return
 
-    if not result.has_changes:
-        logger.info("[检测] 无需同步，没有发现变更")
-        logger.info("=== 完成 ===")
-        return
+        logger.info(f"[检测] {result.summary()}")
+        if result.new_raw_inputs:
+            logger.info("  原始问题新文件:")
+            for f in result.new_raw_inputs:
+                logger.info(f"    - {Path(f).name}")
+        if result.new_interviews:
+            logger.info("  根目录面试记录（兼容模式）:")
+            for f in result.new_interviews:
+                logger.info(f"    - {Path(f).name}")
 
-    logger.info(f"[检测] {result.summary()}")
-    if result.new_raw_inputs:
-        logger.info("  原始问题新文件:")
-        for f in result.new_raw_inputs:
-            logger.info(f"    - {Path(f).name}")
-    if result.new_interviews:
-        logger.info("  根目录面试记录（兼容模式）:")
-        for f in result.new_interviews:
-            logger.info(f"    - {Path(f).name}")
+        # 合并待处理文件列表：优先 new_raw_inputs，再 new_interviews
+        all_new_files = result.new_raw_inputs + result.new_interviews
 
     # 跟踪所有变更文件（用于 auto-commit）
     changed_files: list[str] = []
@@ -182,13 +198,14 @@ def cmd_sync(args):
         "review_files": [],
     }
 
-    # 合并待处理文件列表：优先 new_raw_inputs，再 new_interviews
-    all_new_files = result.new_raw_inputs + result.new_interviews
-
     # 2. 处理每个新面试记录
     for interview_file in all_new_files:
         filename = Path(interview_file).name
-        is_raw_input = interview_file in result.new_raw_inputs
+        is_raw_input = (
+            interview_file in result.new_raw_inputs
+            if not single_file_mode else
+            str(Path(INTERVIEW_REPO_PATH) / RAW_INPUT_DIR) in str(Path(interview_file).parent.resolve())
+        )
         logger.info(f"--- 处理: {filename} {'(原始问题)' if is_raw_input else '(根目录)'} ---")
 
         # 对根目录文件执行文件名规范化（原始问题目录文件不强制规范化）
@@ -241,8 +258,22 @@ def cmd_sync(args):
         except Exception as e:
             logger.error(f"抽取阶段出错: {e}", exc_info=True)
 
-        # b. 归档入问题库
-        if questions_data:
+        # b. 反思交互（--reflect 模式）
+        refl = None
+        enhanced_ctx = None
+        if hasattr(args, 'reflect') and args.reflect and questions_data:
+            logger.info("[反思] 启动面试反思对话...")
+            try:
+                refl = reflector.reflect_interview(interview_file)
+                enhanced_ctx = refl.enhanced_review_context if refl else None
+                if refl and refl.review_content:
+                    logger.info("[反思] 反思完成，复盘报告将融入实际回答表现")
+            except Exception as e:
+                logger.warning(f"反思失败，回退原流程: {e}")
+                enhanced_ctx = None
+
+        # c. 归档入问题库（--reflect 模式下移到复盘之后，此处为非 reflect 模式）
+        if questions_data and not (hasattr(args, 'reflect') and args.reflect):
             try:
                 archive_result = archiver.archive_questions(questions_data, source_label)
                 if archive_result.archived_questions:
@@ -268,12 +299,13 @@ def cmd_sync(args):
             except Exception as e:
                 logger.error(f"归档阶段出错: {e}", exc_info=True)
 
-        # c. 生成独立复盘文件到 面试复盘/
+        # d. 生成独立复盘文件到 面试复盘/（可能带反思上下文）
         try:
             review_result = reviewer.generate_review_file(
                 source_file=interview_file,
                 extracted_data=extracted_meta,
                 output_dir=str(review_output_path),
+                reflection_context=enhanced_ctx,
             )
             logger.info(f"[复盘] 独立复盘文件已生成: {Path(review_result.output_file).name}")
             if review_result.top_concerns:
@@ -283,6 +315,55 @@ def cmd_sync(args):
             changed_files.append(review_result.output_file)
         except Exception as e:
             logger.error(f"复盘阶段出错: {e}", exc_info=True)
+
+        # e. 归档入问题库（--reflect 模式下，复盘之后再入库）
+        if questions_data and hasattr(args, 'reflect') and args.reflect:
+            try:
+                archive_result = archiver.archive_questions(questions_data, source_label)
+                if archive_result.archived_questions:
+                    by_file = defaultdict(list)
+                    for aq in archive_result.archived_questions:
+                        by_file[aq["target_file"]].append(aq["question_id"])
+
+                    logger.info("[归档] 归档完成：")
+                    for target_file, q_ids in by_file.items():
+                        id_range = f"{q_ids[0]}-{q_ids[-1]}" if len(q_ids) > 1 else q_ids[0]
+                        logger.info(f"  - {target_file}: +{len(q_ids)} 题 ({id_range})")
+                        sync_summary["updated_banks"].add(target_file)
+                        bank_path = str(Path(INTERVIEW_REPO_PATH) / "问题库" / target_file)
+                        changed_files.append(bank_path)
+
+                    sync_summary["archived_files"].append(filename)
+                    sync_summary["question_count"] += len(archive_result.archived_questions)
+
+                if archive_result.skipped_duplicates:
+                    logger.info(f"  [去重] 跳过 {len(archive_result.skipped_duplicates)} 个重复问题")
+            except Exception as e:
+                logger.error(f"归档阶段出错: {e}", exc_info=True)
+
+        # f. 反思成功后更新画像
+        if refl and refl.review_content:
+            try:
+                from profile.profile_manager import ProfileManager
+
+                profile_path = str(Path(__file__).parent / "data" / "user_profile.json")
+                pm = ProfileManager(profile_path)
+                pm.load()
+
+                questions_for_profile = [
+                    {"question": q["text"], "category": q.get("category_suggestion", "八股")}
+                    for q in questions_data
+                ]
+
+                refl_meta = reflector._parse_interview_meta(interview_file)
+                pm.update_after_interview(
+                    company=refl_meta["company"],
+                    questions=questions_for_profile,
+                    review_content=refl.review_content,
+                )
+                logger.info("[反思] 用户画像已更新")
+            except Exception as e:
+                logger.warning(f"更新画像失败: {e}")
 
     # 3. 更新同步时间
     detector.update_last_sync_time()
@@ -584,6 +665,43 @@ def cmd_export_session(args):
     print("\n=== 完成 ===\n")
 
 
+def cmd_reflect(args):
+    """面试反思：LLM 询问实际回答表现，分析后更新画像"""
+    file_path = _resolve_file_path(args.file)
+
+    if not Path(file_path).exists():
+        print(f"[错误] 文件不存在: {file_path}")
+        return
+
+    print(f"\n=== 面试反思 ===")
+    print(f"目标文件: {Path(file_path).name}")
+
+    # 加载 LLM 客户端
+    llm = None
+    try:
+        import llm_client
+        llm = llm_client
+    except Exception as e:
+        logger.warning(f"LLM 客户端加载失败，将使用默认问题: {e}")
+
+    try:
+        result = reflector.reflect_interview(file_path, llm_client=llm)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"[错误] {e}")
+        return
+    except KeyboardInterrupt:
+        print("\n\n[中断] 用户取消操作")
+        return
+    except Exception as e:
+        logger.error(f"反思流程出错: {e}", exc_info=True)
+        print(f"[错误] {e}")
+        return
+
+    # 打印分析报告
+    reflector.print_reflection_report(result)
+    print("\n=== 完成 ===\n")
+
+
 # ──────────────────────────────────────────────
 # 主入口
 # ──────────────────────────────────────────────
@@ -602,6 +720,7 @@ def main():
   python main.py review                   复盘最新面经
   python main.py prepare 字节跳动_AI应用开发实习生_260512   岗位预测出题
   python main.py prepare 京东_CHO体系-企业信息化部_后端开发工程师   带部门
+  python main.py reflect 字节跳动_大厂_260513_技术一面.md   面试反思
         """,
     )
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
@@ -609,10 +728,18 @@ def main():
     # sync 子命令
     sync_parser = subparsers.add_parser("sync", help="全流程同步")
     sync_parser.add_argument(
+        "file", nargs="?", default=None,
+        help="可选：指定面经文件路径（不指定则自动检测 面试原始问题/ 下新增文件）"
+    )
+    sync_parser.add_argument(
         "--auto-commit", action="store_true", help="自动提交所有变更到 Git"
     ) if GIT_ENABLED else None
     sync_parser.add_argument(
         "--dry-run", action="store_true", help="仅预览不实际执行提交"
+    )
+    sync_parser.add_argument(
+        "--reflect", action="store_true",
+        help="在复盘前启动反思对话，收集实际回答表现（抽题→反思→复盘→入库）"
     )
 
     # detect 子命令
@@ -663,6 +790,12 @@ def main():
     prepare_parser.add_argument("--date", help="面试日期 YYMMDD，默认今天")
     prepare_parser.add_argument("--count", type=int, default=None, help="期望题数（默认读 config）")
 
+    # reflect 子命令
+    reflect_parser = subparsers.add_parser(
+        "reflect", help="面试反思：LLM 询问实际回答表现，分析后更新画像"
+    )
+    reflect_parser.add_argument("file", help="目标面经文件路径")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -678,6 +811,7 @@ def main():
         "review": cmd_review,
         "prepare": cmd_prepare,
         "export-session": cmd_export_session,
+        "reflect": cmd_reflect,
     }
 
     handler = commands.get(args.command)

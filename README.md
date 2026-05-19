@@ -12,6 +12,7 @@
 ## 核心价值
 
 - **自动化复盘**：输入面试原始问题，自动生成结构化复盘报告（含面试官画像分析）
+- **面试反思**：多轮对话收集实际回答表现，AI 自主提问直到信息覆盖度达标，增强复盘质量
 - **知识积累**：面试问题自动分类归档到 5 个问题库，形成个人知识资产
 - **智能问答**：Web 界面随时查询知识库，支持面试话术 / 详细解释 / 快速回答三种模式
 - **语音输入**：集成讯飞 ASR，支持边说边转的实时语音识别
@@ -25,7 +26,7 @@
 
 | 功能模块 | 说明 | 入口 |
 |---------|------|------|
-| 面试复盘流水线 | 原始问题 → 抽取 → 复盘 → 归档 | CLI `sync` / 单步命令 / Web API |
+| 面试复盘流水线 | 原始问题 → 抽取 → 反思 → 复盘 → 归档 | CLI `sync` / `sync --reflect` / 单步命令 / Web API |
 | 问题抽取与归档 | LLM 自动分类到 5 个问题库（八股、项目、AI_Coding 等） | CLI `extract` / `archive` |
 | 智能问答 | 基于知识库的 RAG 问答，3 种回答模式，流式响应 | Web 界面 |
 | 语音输入 | 讯飞 ASR WebSocket 流式语音识别，边说边转 | Web 界面麦克风按钮 |
@@ -50,7 +51,7 @@
 interview_exp/
 ├── AAA_manager/                # 主程序（FastAPI Web + CLI）
 │   ├── api/routes/             # FastAPI 路由（qa / profile / history / followup / asr / sync / stats / prepare）
-│   ├── core/                   # web_searcher.py / asr_xunfei.py
+│   ├── core/                   # web_searcher.py / asr_xunfei.py / prepare_agent.py
 │   ├── knowledge/              # question_bank / project_reader / resume_reader / excel_reader
 │   ├── profile/                # 用户画像
 │   ├── frontend/static/        # Web 前端
@@ -60,7 +61,7 @@ interview_exp/
 │   ├── logs/                   # 运行日志（gitignore）
 │   ├── app.py main.py          # Web / CLI 入口
 │   ├── config.py llm_client.py # 配置 / LLM 调用
-│   ├── extractor.py archiver.py reviewer.py preparer.py
+│   ├── extractor.py archiver.py reviewer.py reflector.py preparer.py
 │   ├── core/                   # web_searcher.py / asr_xunfei.py / prepare_agent.py
 │   ├── .env.example            # 环境变量模板
 │   ├── projects.yaml.example   # 项目元信息模板（单一真相源）
@@ -173,6 +174,8 @@ python app.py
 
 ### CLI 命令
 
+> **文件命名要求**：面经记录文件需遵循 `公司_类型_YYMMDD_轮次.md` 格式（如 `字节跳动_大厂_260513_技术一面.md`），程序从文件名自动解析公司、日期、轮次等元信息。`sync` 命令要求文件位于 `面试原始问题/` 目录；`reflect` 命令可接受任意路径。
+
 ```bash
 # 抽取问题（支持指定输入类型）
 python main.py extract <file> [--type transcript|chat|structured]
@@ -182,8 +185,16 @@ python main.py extract --from-session <session_id>          # 从模拟面试会
 python main.py review <file>
 python main.py archive <file>
 
-# 全流程串联：extract → review → archive
-python main.py sync <file> [--type transcript|chat|structured]
+# 全流程串联：extract → review → archive（自动检测 面试原始问题/ 下新增文件）
+python main.py sync
+python main.py sync <file>          # 或指定文件路径
+
+# 全流程 + 反思：extract → reflect (交互) → review (增强) → archive
+python main.py sync --reflect       # 自动检测新增文件
+python main.py sync <file> --reflect  # 或指定文件路径
+
+# 单独面试反思（单文件交互）
+python main.py reflect <file>
 
 # 岗位针对性备战：Agent 模式，自主搜索 + 出题 + 自评迭代（异常时自动降级线性流程）
 python main.py prepare 字节跳动_AI应用开发实习生-AI数据与安全_260512
@@ -227,6 +238,8 @@ python main.py export-session <session_id> [--name 文件名] [--rewrite]
 | `PREP_QUESTION_COUNT` | 岗位预测默认题数 | `20` |
 | `PREP_AGENT_MAX_ITERS` | Agent LLM 请求上限（含工具调用轮次） | `8` |
 | `PREP_AGENT_FALLBACK` | Agent 异常时回退线性流程 | `true` |
+| `REFLECT_MAX_ROUNDS` | 反思对话最大轮次（强制停止上限） | `8` |
+| `REFLECT_COVERAGE_THRESHOLD` | 反思覆盖度停止阈值（5 维度全部≥此值自动停止） | `70` |
 | `PROJECT_CONFIGS` | 项目文档配置（`名称:路径:文件;...`），**留空则自动从 `projects.yaml` 派生** | - |
 | `ENABLE_WEB_SEARCH` | 是否启用网络搜索 | `true` |
 | `SEARCH_API_KEY` | 搜索 API 密钥 | - |
@@ -349,7 +362,7 @@ pre-commit install
 
 ## 技术栈
 
-Python 3.11 · FastAPI + Uvicorn · OpenAI SDK（DeepSeek / Qwen 兼容）· websockets（讯飞 ASR）· pdfplumber · openpyxl · httpx · GitPython · python-dotenv · PyYAML
+Python 3.11 · FastAPI + Uvicorn · OpenAI SDK（DeepSeek / Qwen 兼容）· PydanticAI（反思 Agent）· websockets（讯飞 ASR）· pdfplumber · openpyxl · httpx · GitPython · python-dotenv · PyYAML
 
 ---
 

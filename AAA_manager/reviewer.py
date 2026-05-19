@@ -332,6 +332,7 @@ def generate_review_file(
     source_file: str,
     extracted_data: dict | None = None,
     output_dir: str | None = None,
+    reflection_context: str | None = None,
 ) -> ReviewResult:
     """
     生成独立的完整复盘文件到指定目录。
@@ -341,6 +342,7 @@ def generate_review_file(
         extracted_data: extractor 的输出数据（用于推断文件名和提供上下文）
             格式: {"company": "...", "company_type": "...", "round": "...", "date": "..."}
         output_dir: 输出目录路径，默认使用 config.REVIEW_OUTPUT_DIR
+        reflection_context: 反思 Agent 输出的实际回答表现摘要（可选）
 
     Returns:
         ReviewResult 复盘结果（含 output_file 路径）
@@ -387,6 +389,10 @@ def generate_review_file(
 
     # 4. 调用 LLM 生成复盘报告
     user_content = f"以下是 **{title_info}** 的面试问题记录，请生成完整复盘报告：\n\n{content}"
+
+    # 追加反思上下文（若有）
+    if reflection_context:
+        user_content += f"\n\n{reflection_context}"
 
     messages = [
         {"role": "system", "content": system_prompt},
