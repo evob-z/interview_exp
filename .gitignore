@@ -26,7 +26,10 @@ AAA_manager/projects.yaml
 AAA_manager/data/user_profile.json
 AAA_manager/data/sessions/
 AAA_manager/data/chat_history.jsonl
+AAA_manager/.last_sync_time
 AAA_manager/logs/*.log
+AAA_manager/logs/reflect_*.md
+AAA_manager/logs/notepad_*.md
 
 # === 个人面经与知识库（隐私数据） ===
 岗位预测/*
