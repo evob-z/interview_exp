@@ -189,22 +189,30 @@ def _count_questions(content: str) -> int:
 
 def _extract_top_concerns(report: str) -> list[str]:
     """从复盘报告中提取面试官最关注的 TOP3 主题。"""
-    concerns = []
-    # 匹配 **1. xxx** 或 **数字. xxx** 格式
-    pattern = r"\*\*\d+\.\s*(.+?)\*\*"
-    matches = re.findall(pattern, report)
-    # 取第二段（面试官最在意的 3 件事）中的匹配
-    # 通常在 "### 二、" 之后
+    # 支持 **1. xxx** 与 **① xxx** 两种标题格式
+    patterns = (
+        r"\*\*\d+\.\s*(.+?)\*\*",
+        r"\*\*[①②③]\s*(.+?)\*\*",
+    )
+
+    def _collect(text: str) -> list[str]:
+        found: list[str] = []
+        for pat in patterns:
+            for m in re.findall(pat, text):
+                title = re.sub(r'^["\'\u201c\u201d]+|["\'\u201c\u201d]+$', "", m.strip())
+                if title and title not in found:
+                    found.append(title)
+        return found
+
+    concerns: list[str] = []
     section_start = report.find("### 二、")
     section_end = report.find("### 三、")
     if section_start != -1:
         section = report[section_start:section_end] if section_end != -1 else report[section_start:]
-        section_matches = re.findall(pattern, section)
-        if section_matches:
-            concerns = section_matches[:3]
-    # 如果上面没提取到，用全文匹配的前 3 个
-    if not concerns and matches:
-        concerns = matches[:3]
+        concerns = _collect(section)[:3]
+
+    if not concerns:
+        concerns = _collect(report)[:3]
     return concerns
 
 
@@ -332,6 +340,7 @@ def generate_review_file(
     source_file: str,
     extracted_data: dict | None = None,
     output_dir: str | None = None,
+    reflection_context: str | None = None,
 ) -> ReviewResult:
     """
     生成独立的完整复盘文件到指定目录。
@@ -341,6 +350,7 @@ def generate_review_file(
         extracted_data: extractor 的输出数据（用于推断文件名和提供上下文）
             格式: {"company": "...", "company_type": "...", "round": "...", "date": "..."}
         output_dir: 输出目录路径，默认使用 config.REVIEW_OUTPUT_DIR
+        reflection_context: 反思 Agent 输出的实际回答表现摘要（可选）
 
     Returns:
         ReviewResult 复盘结果（含 output_file 路径）
@@ -387,6 +397,10 @@ def generate_review_file(
 
     # 4. 调用 LLM 生成复盘报告
     user_content = f"以下是 **{title_info}** 的面试问题记录，请生成完整复盘报告：\n\n{content}"
+
+    # 追加反思上下文（若有）
+    if reflection_context:
+        user_content += f"\n\n{reflection_context}"
 
     messages = [
         {"role": "system", "content": system_prompt},

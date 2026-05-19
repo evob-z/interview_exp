@@ -143,6 +143,13 @@ if not PROJECT_CONFIGS:
         PROJECT_CONFIGS = ";".join(_parts)
 
 
+# === 面试反思配置 ===
+REFLECT_MAX_ROUNDS = int(os.getenv("REFLECT_MAX_ROUNDS", "12"))
+REFLECT_COVERAGE_THRESHOLD = int(os.getenv("REFLECT_COVERAGE_THRESHOLD", "70"))
+NOTEPAD_MAX_CHARS = int(os.getenv("NOTEPAD_MAX_CHARS", "16000"))
+NOTEPAD_MAX_SECTION_CHARS = int(os.getenv("NOTEPAD_MAX_SECTION_CHARS", "2400"))
+
+
 def get_active_provider(provider: str = None) -> tuple[str, str, str]:
     """
     返回当前激活 provider 的 (api_key, base_url, model) 三元组。

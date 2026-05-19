@@ -95,6 +95,56 @@ def test_submit_final_tool_finalizes_deps():
     assert "```" not in deps.final_markdown
 
 
+def test_submit_final_uses_best_version_when_score_drops():
+    """反思后质量下降时，submit_final 自动使用历史最佳版本"""
+    from core.prepare_agent import PrepareDeps, _tool_submit_final
+
+    deps = PrepareDeps(
+        company="X", position="Y", date="260517", question_count=12,
+        web_searcher=MagicMock(), question_bank=MagicMock(),
+        project_reader=MagicMock(), profile_manager=MagicMock(),
+    )
+
+    # 模拟：第一次生成得分 0.72，evaluate 后记录为最佳
+    deps.last_markdown = "# v1 题库\n### Q1：好题"
+    deps.last_score = 0.72
+    deps.best_markdown = deps.last_markdown
+    deps.best_score = deps.last_score
+
+    # LLM 反思后生成第二版，得分降至 0.48
+    result = _tool_submit_final(deps, markdown="# v2 题库\n### Q1：劣化题", quality_score=0.48)
+
+    # 应该自动使用最佳版本
+    assert deps.finalized is True
+    assert deps.final_markdown == "# v1 题库\n### Q1：好题"
+    assert abs(deps.final_quality - 0.72) < 1e-6
+    assert result["used_best_version"] is True
+
+
+def test_submit_final_accepts_better_version():
+    """LLM 迭代后分数提升时，使用最新版本"""
+    from core.prepare_agent import PrepareDeps, _tool_submit_final
+
+    deps = PrepareDeps(
+        company="X", position="Y", date="260517", question_count=12,
+        web_searcher=MagicMock(), question_bank=MagicMock(),
+        project_reader=MagicMock(), profile_manager=MagicMock(),
+    )
+
+    # 第一版 0.65
+    deps.last_markdown = "# v1"
+    deps.last_score = 0.65
+    deps.best_markdown = deps.last_markdown
+    deps.best_score = deps.last_score
+
+    # 第二版提升到 0.78
+    result = _tool_submit_final(deps, markdown="# v2 改进版", quality_score=0.78)
+
+    assert deps.final_markdown == "# v2 改进版"
+    assert abs(deps.final_quality - 0.78) < 1e-6
+    assert result["used_best_version"] is False
+
+
 # ──────────────────────────────────────────────
 # 2. preparer.prepare_interview 的 fallback 逻辑
 # ──────────────────────────────────────────────

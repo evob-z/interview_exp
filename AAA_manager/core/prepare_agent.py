@@ -65,6 +65,13 @@ class PrepareDeps:
     final_quality: float = 0.0
     finalized: bool = False
 
+    # 版本管理：防止反思后质量下降（保留最佳版本 + 最近版本对比）
+    best_markdown: str = ""
+    best_score: float = 0.0
+    last_markdown: str = ""
+    last_score: float = 0.0
+    version: int = 0
+
 
 # ──────────────────────────────────────────────
 # 系统提示
@@ -92,6 +99,11 @@ _SYSTEM_PROMPT = """\
 6. 调 evaluate_quality 对当前 markdown 自评；若 overall < 0.6 则迭代一次（最多 2 轮）
 7. **必须**通过 submit_final 工具提交最终题库（markdown 来自最新的 generate_questions_draft 结果，
    quality_score 来自最近一次 evaluate_quality 的 overall）
+
+版本管理（系统自动，你无需关心）：
+- 每次 generate_questions_draft 生成一个版本；每次 evaluate_quality 后系统自动保留历史最高分版本
+- submit_final 时若本次分数低于历史最佳，系统会静默使用最佳版本
+- 你只需要照常调用 generate → evaluate → submit_final 即可
 
 约束：
 - 总 LLM 调用不超过 8 次
@@ -283,6 +295,9 @@ def _tool_generate_questions_draft(deps: PrepareDeps, focus: str = "", count: in
             body = re.sub(r"\n```\s*$", "", body, count=1)
 
         deps.iterations_used += 1
+        deps.version += 1
+        deps.last_markdown = body
+        deps.last_score = 0.0  # 等 evaluate_quality 回填
         q_count = len(re.findall(r"^#{2,4}\s*Q\d+[：:]", body, re.MULTILINE))
 
         return {
@@ -330,6 +345,11 @@ def _tool_evaluate_quality(deps: PrepareDeps, markdown: str) -> dict:
             sum(scores[k] for k in ("jd_coverage", "project_depth", "profile_match", "dup_rate")) / 4,
             3,
         )
+        # 版本管理：若当前版本优于历史最佳，自动升级 best
+        deps.last_score = scores["overall"]
+        if scores["overall"] > deps.best_score:
+            deps.best_score = scores["overall"]
+            deps.best_markdown = deps.last_markdown
         return scores
     except Exception as e:
         logger.warning(f"evaluate_quality 工具异常: {e}")
@@ -344,18 +364,42 @@ def _tool_evaluate_quality(deps: PrepareDeps, markdown: str) -> dict:
 
 
 def _tool_submit_final(deps: PrepareDeps, markdown: str, quality_score: float = 0.7) -> dict:
-    """终结工具：回填最终 markdown 与质量分，标记 finalized"""
+    """终结工具：回填最终 markdown 与质量分，标记 finalized。
+
+    版本管理：若本次提交的分数低于历史最佳，自动使用最佳版本。
+    """
     md = (markdown or "").strip()
     if md.startswith("```"):
         md = re.sub(r"^```[a-zA-Z]*\n", "", md, count=1)
         md = re.sub(r"\n```\s*$", "", md, count=1)
-    deps.final_markdown = md
     try:
-        deps.final_quality = max(0.0, min(1.0, float(quality_score)))
+        score = max(0.0, min(1.0, float(quality_score)))
     except Exception:
-        deps.final_quality = 0.7
+        score = 0.7
+
+    # 防退化：若历史最佳版本分数更高，静默替换
+    if deps.best_markdown and deps.best_score > score:
+        logger.warning(
+            f"LLM 提交版本 score={score:.2f} 低于历史最佳 best_score={deps.best_score:.2f}，"
+            f"自动使用最佳版本"
+        )
+        deps.final_markdown = deps.best_markdown
+        deps.final_quality = deps.best_score
+    else:
+        deps.final_markdown = md
+        deps.final_quality = score
+        # 最后提交的版本若是最佳，也更新 best
+        if score > deps.best_score:
+            deps.best_score = score
+            deps.best_markdown = md
+
     deps.finalized = True
-    return {"accepted": True, "length": len(md), "quality_score": deps.final_quality}
+    return {
+        "accepted": True,
+        "length": len(deps.final_markdown),
+        "quality_score": deps.final_quality,
+        "used_best_version": deps.best_markdown and deps.best_score > score,
+    }
 
 
 # ──────────────────────────────────────────────
@@ -593,6 +637,18 @@ def run_prepare_agent(
                 "tool_call_id": tc.id,
                 "name": name,
                 "content": json.dumps(result, ensure_ascii=False)[:8000],
+            })
+
+        # 软护栏：JD 搜满 3 轮后注入提醒，防 LLM 钻牛角尖
+        if deps.search_rounds >= 3 and any(
+            tc.function.name == "search_jd" for tc in tool_calls
+        ):
+            messages.append({
+                "role": "user",
+                "content": (
+                    "[系统提示] JD 搜索已达 3 轮上限，请立即进入下一步："
+                    "read_resume → read_projects → get_user_profile → generate 出题，不要再搜 JD。"
+                ),
             })
 
         if deps.finalized:
