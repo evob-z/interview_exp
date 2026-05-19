@@ -189,22 +189,30 @@ def _count_questions(content: str) -> int:
 
 def _extract_top_concerns(report: str) -> list[str]:
     """从复盘报告中提取面试官最关注的 TOP3 主题。"""
-    concerns = []
-    # 匹配 **1. xxx** 或 **数字. xxx** 格式
-    pattern = r"\*\*\d+\.\s*(.+?)\*\*"
-    matches = re.findall(pattern, report)
-    # 取第二段（面试官最在意的 3 件事）中的匹配
-    # 通常在 "### 二、" 之后
+    # 支持 **1. xxx** 与 **① xxx** 两种标题格式
+    patterns = (
+        r"\*\*\d+\.\s*(.+?)\*\*",
+        r"\*\*[①②③]\s*(.+?)\*\*",
+    )
+
+    def _collect(text: str) -> list[str]:
+        found: list[str] = []
+        for pat in patterns:
+            for m in re.findall(pat, text):
+                title = re.sub(r'^["\'\u201c\u201d]+|["\'\u201c\u201d]+$', "", m.strip())
+                if title and title not in found:
+                    found.append(title)
+        return found
+
+    concerns: list[str] = []
     section_start = report.find("### 二、")
     section_end = report.find("### 三、")
     if section_start != -1:
         section = report[section_start:section_end] if section_end != -1 else report[section_start:]
-        section_matches = re.findall(pattern, section)
-        if section_matches:
-            concerns = section_matches[:3]
-    # 如果上面没提取到，用全文匹配的前 3 个
-    if not concerns and matches:
-        concerns = matches[:3]
+        concerns = _collect(section)[:3]
+
+    if not concerns:
+        concerns = _collect(report)[:3]
     return concerns
 
 

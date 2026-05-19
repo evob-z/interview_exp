@@ -825,7 +825,11 @@ def _save_reflect_log(
         lines: list[str] = []
         lines.append("# 面试反思记录")
         lines.append("")
-        lines.append(f"- **公司**: {meta.get('company', '')} ({meta.get('company_type', '')}")
+        company_type = meta.get("company_type", "")
+        company_line = f"- **公司**: {meta.get('company', '')}"
+        if company_type:
+            company_line += f" ({company_type})"
+        lines.append(company_line)
         lines.append(f"- **日期**: {meta.get('date', '')} {meta.get('round', '')}")
         lines.append(f"- **生成时间**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append(f"- **题目数**: {len(questions)} 题")
@@ -990,6 +994,8 @@ async def reflect_interview_async(
             break
 
         if not user_input:
+            rounds -= 1  # 撤销本轮计数，避免空回车导致重复提问刷屏
+            print("\n  [提示] 回答不能为空，请重新输入（/stop 可随时停止）")
             continue
 
         transcript.append({"q": turn.next_question, "a": user_input})

@@ -14,6 +14,7 @@ import pytest
 # 确保 AAA_manager 目录在 sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from reviewer import _extract_top_concerns
 from reflector import (
     CoverageScores,
     Notepad,
@@ -235,6 +236,22 @@ def test_build_initial_context_with_projects():
 # ──────────────────────────────────────────────
 # _format_for_reviewer
 # ──────────────────────────────────────────────
+
+def test_extract_top_concerns_circled_numbers():
+    report = """
+### 二、面试官关注点总结与画像分析
+
+**① "你的项目到底是你做的，还是你只是用过？"**
+**② "你懂分布式系统的核心组件吗？"**
+**③ "你的Agent设计是花架子还是有工程价值？"**
+
+### 三、给自己的复盘建议
+"""
+    concerns = _extract_top_concerns(report)
+    assert len(concerns) == 3
+    assert "项目" in concerns[0]
+    assert "分布式" in concerns[1]
+
 
 def test_format_for_reviewer():
     summary = _make_summary()
