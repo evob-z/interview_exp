@@ -372,7 +372,7 @@
 
         // 流式完成后触发追问轮询
         if (currentSessionId) {
-            setTimeout(() => pollFollowups(currentSessionId), 2000);
+            setTimeout(() => pollFollowups(currentSessionId), 4000);
         }
     }
 
@@ -387,12 +387,13 @@
 
         // 触发追问轮询
         if (currentSessionId) {
-            setTimeout(() => pollFollowups(currentSessionId), 2000);
+            setTimeout(() => pollFollowups(currentSessionId), 4000);
         }
     }
 
     // --- Followup Prediction ---
     async function pollFollowups(sessionId) {
+        // 最多轮询 5 次，间隔 5 秒（之前 2s 太频、会刷屏 app.log）
         for (let i = 0; i < 5; i++) {
             try {
                 const data = await apiGet(`/api/followup/${sessionId}`);
@@ -401,7 +402,7 @@
                     return;
                 }
             } catch (e) { /* ignore */ }
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 5000));
         }
     }
 

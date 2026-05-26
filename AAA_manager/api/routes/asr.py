@@ -36,6 +36,10 @@ async def asr_websocket(ws: WebSocket):
     try:
         while True:
             data = await ws.receive()
+            # 显式处理 disconnect 消息，避免再次 receive 抛 RuntimeError
+            if data.get("type") == "websocket.disconnect":
+                logger.info("前端 WebSocket 断开连接")
+                break
             if "text" in data:
                 cmd = data["text"]
                 if cmd == "START":
@@ -57,6 +61,13 @@ async def asr_websocket(ws: WebSocket):
                     await asr.send_audio(chunk)
     except WebSocketDisconnect:
         logger.info("前端 WebSocket 断开连接")
+    except RuntimeError as e:
+        # Starlette 在 disconnect 后再次调用 receive 会抛 RuntimeError，按断开处理
+        msg = str(e)
+        if "disconnect" in msg or "after sending" in msg:
+            logger.info(f"前端 WebSocket 已断开（receive 后置异常）: {msg}")
+        else:
+            logger.error(f"ASR WebSocket 异常: {e}")
     except Exception as e:
         logger.error(f"ASR WebSocket 异常: {e}")
     finally:
