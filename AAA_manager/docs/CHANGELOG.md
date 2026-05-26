@@ -12,6 +12,21 @@
 
 ---
 
+## [2026-05-26] Obsidian 元数据层集成
+
+| 文档 | 类型 | 摘要 |
+|------|------|------|
+| 08_Obsidian元数据层集成方案.md | 新增 | SPEC：frontmatter 元数据层设计，覆盖知识图谱/掌握度/时间追踪 |
+| 03_系统架构设计.md | 更新 | 新增 `frontmatter_utils.py` 和 `obsidian_reader.py` 到基础设施层 |
+| frontmatter_utils.py | 新增 | YAML frontmatter 读写 + Dataview inline 字段操作（纯 Python） |
+| obsidian_reader.py | 新增 | Obsidian CLI 可选加速读取层，含降级路径 |
+| preparer.py | 更新 | 岗位预测文件生成后自动打 frontmatter（company/position/date 等） |
+| reflector.py | 更新 | 新 QuestionItem schema + mastery 打标 + `_format_transcript` 修复 |
+| archiver.py | 更新 | 来源行格式从纯文本升级为 `[[wikilink]]` |
+| knowledge/question_bank.py | 更新 | `_extract_source` 增加 wikilink 括号剥离逻辑 |
+
+---
+
 ## [2026-05-17] 文档体系初始化
 
 | 文档 | 类型 | 摘要 |

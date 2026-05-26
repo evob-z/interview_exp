@@ -95,9 +95,22 @@ class QuestionBank:
         return questions
 
     def _extract_source(self, body: str) -> str:
-        """提取来源信息"""
+        """提取来源信息，剥离 wikilink 括号"""
         match = re.search(r'[*-]\s*\*{0,2}来源\*{0,2}[：:]\s*(.+)', body)
-        return match.group(1).strip() if match else ""
+        if not match:
+            return ""
+        source = match.group(1).strip()
+        # 从 frontmatter_utils 复用 wikilink 解析，精确剥离 [[...]] 格式
+        try:
+            from frontmatter_utils import parse_wikilinks
+            wikilinks = parse_wikilinks(source)
+            if wikilinks:
+                # 替换第一个 wikilink 为其纯文本标签
+                replaced = source.replace(f"[[{wikilinks[0]}]]", wikilinks[0], 1)
+                return replaced
+        except Exception:
+            logger.debug("wikilink 解析失败，保留原始来源文本", exc_info=True)
+        return source
 
     def _extract_points(self, body: str) -> list[str]:
         """提取答题要点/要点/答题方向"""

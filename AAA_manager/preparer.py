@@ -193,6 +193,23 @@ def _format_jd_context(jd: dict, max_snippets: int = 8, max_chars: int = 4000) -
 # 核心入口
 # ──────────────────────────────────────────────
 
+def _write_prep_frontmatter(out_path: Path, company: str, position: str, date: str, department: str = "") -> None:
+    """给预测文件写入 Obsidian frontmatter（增强失败不影响主流程）。"""
+    try:
+        from frontmatter_utils import write_frontmatter
+        props: dict[str, str] = {
+            "company": company,
+            "position": position,
+            "date": date,
+            "prep_type": "岗位预测",
+        }
+        if department:
+            props["department"] = department
+        write_frontmatter(out_path, props)
+    except Exception:
+        logger.debug("frontmatter 增强写入失败（不影响主流程）", exc_info=True)
+
+
 def prepare_interview(
     company: str,
     position: str,
@@ -266,6 +283,9 @@ def prepare_interview(
         body = re.sub(r"^```[a-zA-Z]*\n", "", body, count=1)
         body = re.sub(r"\n```\s*$", "", body, count=1)
     out_path.write_text(body + "\n", encoding="utf-8")
+
+    # ── Obsidian 增强：给预测文件打 frontmatter ──
+    _write_prep_frontmatter(out_path, company, position, date, department)
 
     q_count = len(re.findall(r"^#{2,4}\s*Q\d+[：:]", body, re.MULTILINE))
     elapsed = (datetime.now() - start_ts).total_seconds()
@@ -353,6 +373,9 @@ def _legacy_prepare(
         body = re.sub(r"^```[a-zA-Z]*\n", "", body, count=1)
         body = re.sub(r"\n```\s*$", "", body, count=1)
     out_path.write_text(body + "\n", encoding="utf-8")
+
+    # ── Obsidian 增强：给预测文件打 frontmatter ──
+    _write_prep_frontmatter(out_path, company, position, date, department)
 
     # 6. 统计题数
     q_count = len(re.findall(r"^#{2,4}\s*Q\d+[：:]", body, re.MULTILINE))

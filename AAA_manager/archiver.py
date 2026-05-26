@@ -409,7 +409,7 @@ def _append_question_to_file(
         points_text = "\n".join(f"  - {p}" for p in answer["points"])
         entry = (
             f"\n\n## Q{question_id}：{question_text}\n"
-            f"- **来源**：{source_label} #{original_id}\n"
+            f"- **来源**：[[{source_label}]] #{original_id}\n"
             f"- **答题要点**：\n{points_text}\n"
             f"- **\U0001f4ac 面试话术**：\n  > {answer['speech']}\n"
         )
@@ -417,7 +417,7 @@ def _append_question_to_file(
         # fallback：无 AI 回答时使用旧格式
         entry = (
             f"\n\n## Q{question_id}：{question_text}\n"
-            f"- **来源**：{source_label} #{original_id}\n"
+            f"- **来源**：[[{source_label}]] #{original_id}\n"
             f"- **要点**：待补充\n"
         )
 

@@ -82,11 +82,26 @@ class ReflectionTurn(BaseModel):
     should_stop: bool = Field(default=False)
 
 
+class QuestionItem(BaseModel):
+    """单个问题的结构化评估（用于 Summary Agent → mastery 打标）"""
+    qid: int = Field(description="问题编号，如 Q1 的 1")
+    category: str = Field(description="分类，如 八股/AI_Coding/项目-law_sea")
+    reason: str = Field(default="", description="简短原因，≤30字")
+
+
 class ReflectionSummary(BaseModel):
     """Summary Agent 最终输出"""
     performance_summary: str
     well_answered: list[str] = Field(default_factory=list)
     poorly_answered: list[str] = Field(default_factory=list)
+    well_answered_qids: list[QuestionItem] = Field(
+        default_factory=list,
+        description="从 well_answered 中逐题提取的结构化信息，每项包含 qid/category/reason。必须与 well_answered 自然语言列表一致——列表中提到的每道题都要出现",
+    )
+    poorly_answered_qids: list[QuestionItem] = Field(
+        default_factory=list,
+        description="从 poorly_answered 中逐题提取的结构化信息，同上格式",
+    )
     interviewer_focus: list[str] = Field(default_factory=list)
     improvement_suggestions: list[str] = Field(default_factory=list)
     review_content: str = Field(min_length=100)
@@ -755,7 +770,7 @@ def _format_transcript(
 
     parts.append(f"## 面试问题（共 {len(questions)} 题）")
     for q in questions:
-        parts.append(f"Q{q.get('id', '?')}: {q.get('text', '')}")
+        parts.append(f"Q{q.get('id', '?')} [{q.get('category_suggestion', '未分类')}]: {q.get('text', '')}")
     parts.append("")
 
     parts.append("## 反思对话记录")
@@ -804,6 +819,46 @@ def _format_for_reviewer(summary: ReflectionSummary) -> str:
 # ═══════════════════════════════════════════════
 # 主流程
 # ═══════════════════════════════════════════════
+
+def _enhance_mastery_from_summary(summary_output: ReflectionSummary) -> None:
+    """从 Summary Agent 结构化输出中提取评估，写入问题库每题 inline 元数据。
+
+    遍历 poorly_answered_qids / well_answered_qids，
+    通过 CATEGORY_FILE_MAP 定位目标文件，调用 upsert_inline_metadata 写入。
+    """
+    try:
+        from frontmatter_utils import upsert_inline_metadata
+    except ImportError:
+        return
+
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+
+    for item in summary_output.poorly_answered_qids:
+        target_file = config.CATEGORY_FILE_MAP.get(item.category)
+        if not target_file:
+            continue
+        file_path = config.QUESTION_BANK_PATH / target_file
+        try:
+            upsert_inline_metadata(file_path, item.qid, {
+                "mastery": "weak",
+                "last_reviewed": today,
+            })
+        except Exception:
+            logger.debug(f"Q{item.qid} mastery 写入失败", exc_info=True)
+
+    for item in summary_output.well_answered_qids:
+        target_file = config.CATEGORY_FILE_MAP.get(item.category)
+        if not target_file:
+            continue
+        file_path = config.QUESTION_BANK_PATH / target_file
+        try:
+            upsert_inline_metadata(file_path, item.qid, {
+                "mastery": "mastered",
+                "last_reviewed": today,
+            })
+        except Exception:
+            logger.debug(f"Q{item.qid} mastery 写入失败", exc_info=True)
+
 
 def _save_reflect_log(
     meta: dict,
@@ -1055,7 +1110,27 @@ async def reflect_interview_async(
     result.enhanced_review_context = _format_for_reviewer(summary_output)
 
     # 持久化（含汇总分析）
-    _save_reflect_log(meta, questions, transcript, summary_output)
+    reflect_path = _save_reflect_log(meta, questions, transcript, summary_output)
+
+    # ── Obsidian 增强：复盘文件 frontmatter ──
+    try:
+        if reflect_path:
+            from frontmatter_utils import write_frontmatter
+            write_frontmatter(reflect_path, {
+                "company": meta.get("company", ""),
+                "company_type": meta.get("company_type", ""),
+                "date": meta.get("date", ""),
+                "round": meta.get("round", ""),
+                "doc_type": "面试复盘",
+            })
+    except Exception:
+        logger.debug("复盘文件 frontmatter 写入失败（不影响主流程）", exc_info=True)
+
+    # ── Obsidian 增强：每题 mastery 打标 ──
+    try:
+        _enhance_mastery_from_summary(summary_output)
+    except Exception:
+        logger.debug("mastery 打标失败（不影响主流程）", exc_info=True)
 
     logger.info("反思汇总完成")
     return result

@@ -31,9 +31,17 @@
    - 下次面试的改进方向
    - 语言自然，不要列表格式，用连贯的段落写
 
+7. **well_answered_qids**（对象列表）：从 well_answered 中逐题提取的结构化信息。每条包含：
+   - `qid`（整数）：问题编号（Q1 则是 1，Q2 则是 2，以此类推）
+   - `category`（字符串）：题目的分类（从输入 transcript 中每道题 `[分类]` 标注获取，如"八股"/"AI_Coding"/"项目-law_sea"等）
+   - `reason`（字符串，≤30字）：简短理由
+
+8. **poorly_answered_qids**（对象列表）：同上格式，对应 poorly_answered 中提到的每道题
+
 ## 严格约束
 
 1. 所有输出必须基于对话中候选人的实际陈述，不编造
 2. 如果某些维度候选人没有提供信息，相应字段返回空列表
 3. review_content 至少 100 字，这是硬性要求
 4. 不要输出任何对话历史摘要或开场白，直接输出结构化结果
+5. **well_answered_qids 和 poorly_answered_qids 必须与 well_answered 和 poorly_answered（自然语言列表）一致**——自然语言中提到的每一道题都必须在对应的 _qids 字段中出现，不可遗漏

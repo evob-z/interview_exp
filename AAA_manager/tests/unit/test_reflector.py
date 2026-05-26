@@ -18,6 +18,7 @@ from reviewer import _extract_top_concerns
 from reflector import (
     CoverageScores,
     Notepad,
+    QuestionItem,
     ReflectionTurn,
     ReflectionSummary,
     ReflectionResult,
@@ -29,6 +30,7 @@ from reflector import (
     _init_project_reader,
     _build_initial_context,
     _format_for_reviewer,
+    _enhance_mastery_from_summary,
     lookup_project_doc,
 )
 
@@ -70,6 +72,30 @@ def _make_summary():
             "同时建议准备 2-3 个项目的深度复盘案例，涵盖技术选型理由、遇到的挑战和解决方案。"
             "这些内容足够超过一百个字符以满足 Pydantic 验证的字段最低长度要求。"
         ),
+    )
+
+
+def _make_summary_with_qids():
+    """构造带 qids 的 ReflectionSummary，用于测试 mastery 打标路径。"""
+    return ReflectionSummary(
+        performance_summary="整体表现中等，八股部分答得不好",
+        well_answered=["Q1 自我介绍流畅"],
+        poorly_answered=["Q2 Python GIL 理解不深", "Q3 装饰器原理模糊"],
+        well_answered_qids=[
+            QuestionItem(qid=1, category="八股", reason="自我介绍流畅自信"),
+        ],
+        poorly_answered_qids=[
+            QuestionItem(qid=2, category="八股", reason="GIL 仅知道存在不了解原理"),
+            QuestionItem(qid=3, category="八股", reason="装饰器概念模糊"),
+        ],
+        interviewer_focus=["追问了 Python 并发"],
+        improvement_suggestions=["加强 Python 高级特性"],
+        review_content="面试整体表现中等偏上，自我介绍流畅自信，八股部分存在明显短板。"
+                       "Python GIL 和装饰器原理两道题答得模糊，暴露了基础知识不扎实的问题。"
+                       "面试官明显关注 Python 并发能力和系统架构设计经验，对项目细节追问较多。"
+                       "建议后续重点加强计算机基础知识的系统学习，尤其是 Python 高级特性和分布式系统设计。"
+                       "同时建议准备 2-3 个项目的深度复盘案例，涵盖技术选型理由、遇到的挑战和解决方案。"
+                       "这些内容足够超过一百个字符以满足 Pydantic 验证的字段最低长度要求。",
     )
 
 
@@ -548,3 +574,125 @@ async def test_reflect_summary_failure_fallback(sample_interview_file, mocker):
     assert result.enhanced_review_context != ""
     # summary 应为空 dict
     assert result.summary == {}
+
+
+# ──────────────────────────────────────────────
+# _enhance_mastery_from_summary
+# ──────────────────────────────────────────────
+
+def test_enhance_mastery_writes_inline(tmp_path, monkeypatch):
+    """有 poorly_answered_qids → 写入 mastery:: weak 到问题库文件。"""
+    import config
+
+    # 隔离：问题库指向 tmp_path
+    qb = tmp_path / "问题库"
+    qb.mkdir()
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb)
+    monkeypatch.setattr(config, "CATEGORY_FILE_MAP", {"八股": "八股.md"})
+
+    # 创建问题库文件，包含 Q2 和 Q3
+    qb_file = qb / "八股.md"
+    qb_file.write_text(
+        "---\ntitle: 八股\n---\n\n"
+        "## Q1：自我介绍如何准备\n内容略\n\n"
+        "## Q2：Python GIL 是什么\nGIL 是全局解释器锁\n\n"
+        "## Q3：装饰器原理\n装饰器本质是闭包\n",
+        encoding="utf-8",
+    )
+
+    summary = _make_summary_with_qids()
+    _enhance_mastery_from_summary(summary)
+
+    content = qb_file.read_text(encoding="utf-8")
+    # Q2 应该是 weak
+    assert "mastery:: weak" in content
+    # Q3 也应该是 weak
+    parts = content.split("## Q")
+    q3_block = [p for p in parts if p.startswith("3")][0]
+    assert "mastery:: weak" in q3_block
+    # Q1 不应被标记（well_answered → mastered，但因为 category 也是"八股"，
+    # 它的 mastery 应该被写入到文件中的 Q1 块）
+    q1_block = [p for p in parts if p.startswith("1")][0]
+    assert "mastery:: mastered" in q1_block
+
+
+def test_enhance_mastery_empty_qids(tmp_path, monkeypatch):
+    """qids 为空 → 不写任何内容（不抛异常）。"""
+    import config
+
+    qb = tmp_path / "问题库"
+    qb.mkdir()
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb)
+    monkeypatch.setattr(config, "CATEGORY_FILE_MAP", {"八股": "八股.md"})
+
+    qb_file = qb / "八股.md"
+    original = "## Q1：测试\n内容\n"
+    qb_file.write_text(original, encoding="utf-8")
+
+    summary = _make_summary()  # qids 为空
+    _enhance_mastery_from_summary(summary)
+
+    assert qb_file.read_text(encoding="utf-8") == original
+
+
+def test_enhance_mastery_unknown_category(tmp_path, monkeypatch):
+    """category 不在 CATEGORY_FILE_MAP → 静默跳过，不写入任何文件。"""
+    import config
+
+    # 隔离 config：问题库指向 tmp，CATEGORY_FILE_MAP 不含目标分类
+    qb = tmp_path / "问题库"
+    qb.mkdir()
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb)
+    monkeypatch.setattr(config, "CATEGORY_FILE_MAP", {"八股": "八股.md"})
+
+    # 创建问题库文件，用于验证未被修改
+    qb_file = qb / "八股.md"
+    original = "## Q1：测试问题\n内容\n"
+    qb_file.write_text(original, encoding="utf-8")
+
+    summary = ReflectionSummary(
+        performance_summary="测试",
+        poorly_answered_qids=[
+            QuestionItem(qid=1, category="不存在的分类", reason="测试"),
+        ],
+        review_content=(
+            "这是测试内容用来满足 Pydantic 验证的最低一百个字符限制要求。"
+            "面试整体表现中等偏上，自我介绍流畅自信，技术部分存在明显短板。"
+            "Python GIL 和装饰器原理两道题答得模糊，暴露了基础知识不扎实的问题。"
+            "面试官明显关注 Python 并发能力和系统架构设计经验，对项目细节追问较多。"
+            "建议后续重点加强计算机基础知识的系统学习，尤其是 Python 高级特性。"
+        ),
+    )
+
+    _enhance_mastery_from_summary(summary)
+
+    # 不应抛异常，且文件内容不变
+    assert qb_file.read_text(encoding="utf-8") == original
+
+
+def test_enhance_mastery_import_error(monkeypatch):
+    """frontmatter_utils 不可用 → 静默返回。"""
+    import sys
+    from pathlib import Path
+
+    # 清除可能被 test_frontmatter_utils 缓存的模块
+    monkeypatch.delitem(sys.modules, "frontmatter_utils", raising=False)
+
+    # 隔离 config 避免意外写入真实文件
+    import config
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", Path("/nonexistent"))
+
+    # 模拟 import 失败
+    import builtins
+    original_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if name == "frontmatter_utils":
+            raise ImportError("mock import error")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+
+    summary = _make_summary_with_qids()
+    # 不应抛异常
+    _enhance_mastery_from_summary(summary)
