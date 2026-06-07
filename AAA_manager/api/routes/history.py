@@ -17,9 +17,37 @@ def _ensure_dir():
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _resolve_session_path(session_id: str) -> Path | None:
+    """根据 session_id 查找会话文件（兼容新旧命名格式）。
+    
+    新格式: YYYYMMDD_HHMMSS_{id}.json
+    旧格式: {id}.json
+    """
+    # 精确匹配旧格式
+    old_path = SESSIONS_DIR / f"{session_id}.json"
+    if old_path.exists():
+        return old_path
+    # 匹配新格式 *_<id>.json
+    candidates = list(SESSIONS_DIR.glob(f"*_{session_id}.json"))
+    if candidates:
+        return candidates[0]
+    return None
+
+
+def _make_session_filename(session: dict) -> str:
+    """根据会话数据生成文件名：YYYYMMDD_HHMMSS_{id}.json"""
+    created = session.get("created_at", "")
+    try:
+        dt = datetime.fromisoformat(created)
+        ts = dt.strftime("%Y%m%d_%H%M%S")
+    except (ValueError, TypeError):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{ts}_{session['id']}.json"
+
+
 def _load_session(session_id: str) -> dict:
-    path = SESSIONS_DIR / f"{session_id}.json"
-    if not path.exists():
+    path = _resolve_session_path(session_id)
+    if not path:
         return None
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -27,7 +55,12 @@ def _load_session(session_id: str) -> dict:
 
 def _save_session(session: dict):
     _ensure_dir()
-    path = SESSIONS_DIR / f"{session['id']}.json"
+    # 优先复用已有文件路径，否则按新格式生成
+    existing = _resolve_session_path(session["id"])
+    if existing:
+        path = existing
+    else:
+        path = SESSIONS_DIR / _make_session_filename(session)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(session, f, ensure_ascii=False, indent=2)
 
@@ -140,8 +173,8 @@ async def cleanup_empty_sessions():
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
     """删除会话"""
-    path = SESSIONS_DIR / f"{session_id}.json"
-    if path.exists():
+    path = _resolve_session_path(session_id)
+    if path and path.exists():
         os.remove(path)
     return {"status": "ok", "message": "已删除"}
 

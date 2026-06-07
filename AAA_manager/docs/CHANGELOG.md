@@ -12,7 +12,21 @@
 
 ---
 
-## [2026-05-26] Obsidian 元数据层集成
+## [2026-05-26] Obsidian 元数据层集成 — 文档同步 + 数据回填
+
+| 文档 | 类型 | 摘要 |
+|------|------|------|
+| README.md | 更新 | 新增 Obsidian 知识管理核心价值、功能概览、仓库结构 |
+| 01_需求文档.md | 更新 | 新增 FR-016~018：元数据标记、掌握度追踪、知识图谱关联 |
+| 05_部署配置文档.md | 更新 | 新增 PyYAML 依赖 + Obsidian CLI 可选依赖 |
+| 07_测试策略文档.md | 更新 | 新增 frontmatter_utils / reflector mastery 测试覆盖 |
+| scripts/backfill_frontmatter.py | 新增 | 存量数据回填脚本：inline 元数据 + wikilink 转换 + frontmatter 补打 |
+| .qoder/agents/code-reviewer.md | 更新 | 新增 §9 任务完成度检查（SPEC 交付物核对、文档同步验证） |
+| .qoder/agents/test-reviewer.md | 更新 | 新增 §6 任务完成度检查（测试覆盖 vs SPEC 范围核对） |
+
+---
+
+## [2026-05-26] Obsidian 元数据层集成（代码实现）
 
 | 文档 | 类型 | 摘要 |
 |------|------|------|

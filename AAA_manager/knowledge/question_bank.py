@@ -1,15 +1,35 @@
 """
 question_bank.py - 问题库检索模块
-解析问题库目录下的 .md 文件，建立问题索引，支持关键词搜索。
+解析问题库目录下的 .md 文件，建立问题索引，支持关键词+语义混合搜索。
 """
 
 import os
 import re
 import logging
+import numpy as np
 from pathlib import Path
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# ── 语义匹配：lazy-load 本地 embedding 模型 ──
+_embedding_model = None
+_EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+
+
+def _get_embedding_model():
+    """懒加载 sentence-transformers 模型（单例），加载失败返回 None 降级纯关键词"""
+    global _embedding_model
+    if _embedding_model is not None:
+        return _embedding_model
+    try:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer(_EMBEDDING_MODEL_NAME)
+        logger.info(f"语义匹配模型已加载: {_EMBEDDING_MODEL_NAME}")
+    except Exception as e:
+        logger.warning(f"语义匹配模型加载失败，降级为纯关键词匹配: {e}")
+        _embedding_model = False  # 标记为已尝试但失败
+    return _embedding_model if _embedding_model is not False else None
 
 
 class QuestionBank:
@@ -27,6 +47,8 @@ class QuestionBank:
         self.questions: list[dict] = []
         self._categories: list[str] = []
         self._loaded = False
+        # 语义匹配：question_id → embedding 向量缓存
+        self._embeddings: dict[int, np.ndarray] = {}
 
     def load(self):
         """解析所有 .md 文件，建立索引"""
@@ -64,6 +86,9 @@ class QuestionBank:
 
         self._loaded = True
         logger.info(f"问题库加载完成：{len(self._categories)} 个分类，{len(self.questions)} 道题目")
+
+        # 预计算全部题目的语义向量（一次性批量编码）
+        self._compute_embeddings()
 
     def _parse_md(self, content: str, category: str) -> list[dict]:
         """解析单个 md 文件中的所有问题"""
@@ -211,36 +236,85 @@ class QuestionBank:
         return results[:top_k]
 
     def _compute_score(self, query: str, question: dict) -> float:
-        """计算查询词与问题的匹配分数"""
+        """计算查询词与问题的混合匹配分数（关键词 + 语义）"""
         score = 0.0
+        query_lower = query.lower()
         text_lower = question["text"].lower()
         body_lower = question["raw_body"].lower()
 
         # 1. 精确子串匹配（双向）
-        if query in text_lower:
+        if query_lower in text_lower:
             score += 10.0
-        elif text_lower in query:
+        elif text_lower in query_lower:
             # 题目是用户输入的子串（如题库"http和https区别" in 用户"http和https的区别"）
             score += 9.0
 
         # 2. 精确匹配正文内容（中分）
-        if query in body_lower:
+        if query_lower in body_lower:
             score += 5.0
 
         # 3. 基于 n-gram 字符重叠度的模糊匹配
         if score == 0:
-            ngram_score = self._ngram_similarity(query, text_lower)
+            ngram_score = self._ngram_similarity(query_lower, text_lower)
             score += ngram_score * 10.0  # 提高权重，最高 10 分
 
         # 4. 单字符匹配（补充分数）
         if score == 0:
-            char_overlap = sum(1 for c in query if c in text_lower)
-            if len(query) > 0:
-                overlap_ratio = char_overlap / len(query)
+            char_overlap = sum(1 for c in query_lower if c in text_lower)
+            if len(query_lower) > 0:
+                overlap_ratio = char_overlap / len(query_lower)
                 if overlap_ratio >= 0.5:
                     score += overlap_ratio * 3.0
 
+        # 5. 语义向量相似度加成（杜绝"agent框架→可靠性评估"类误匹配）
+        sem_score = self._semantic_score(query_lower, question)
+        if sem_score is not None:
+            score += sem_score * 10.0
+
         return round(score, 3)
+
+    # ── 语义匹配 ──
+
+    def _compute_embeddings(self):
+        """批量编码全部题目文本，缓存到 self._embeddings"""
+        model = _get_embedding_model()
+        if model is None:
+            return
+
+        if not self.questions:
+            return
+
+        try:
+            texts = [q["text"] for q in self.questions]
+            embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+            for q, emb in zip(self.questions, embeddings):
+                self._embeddings[q["id"]] = emb
+            logger.info(f"语义向量预计算完成：{len(self._embeddings)} 条")
+        except Exception as e:
+            logger.warning(f"语义向量预计算失败，降级为纯关键词: {e}")
+            self._embeddings.clear()
+
+    def _semantic_score(self, query: str, question: dict) -> float | None:
+        """计算查询与题目的余弦相似度，未启用语义匹配时返回 None"""
+        model = _get_embedding_model()
+        if model is None:
+            return None
+
+        cached_emb = self._embeddings.get(question["id"])
+        if cached_emb is None:
+            return None
+
+        try:
+            query_emb = model.encode([query], convert_to_numpy=True, show_progress_bar=False)[0]
+            # 余弦相似度
+            dot = np.dot(query_emb, cached_emb)
+            norm = np.linalg.norm(query_emb) * np.linalg.norm(cached_emb)
+            if norm == 0:
+                return 0.0
+            return float(dot / norm)
+        except Exception as e:
+            logger.debug(f"语义相似度计算失败: {e}")
+            return None
 
     def _ngram_similarity(self, query: str, text: str, n: int = 2) -> float:
         """基于字符 n-gram 的相似度计算"""

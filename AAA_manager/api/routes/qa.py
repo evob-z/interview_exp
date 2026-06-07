@@ -25,8 +25,9 @@ router = APIRouter()
 # 加载 QA System Prompt 模板
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 
-# 相似度阈值：score >= 此值时直接返回已有回答
-DIRECT_ANSWER_THRESHOLD = 5.5
+# 混合匹配阈值：仅当 score >= 此值（即强匹配）时才直接返回已有回答
+# 纯关键词≤10分 + 语义加成(cosine×10)，低于阈值走 LLM 路径
+DIRECT_ANSWER_THRESHOLD = 9.5
 
 
 def detect_project_boost(question: str) -> list[str] | None:

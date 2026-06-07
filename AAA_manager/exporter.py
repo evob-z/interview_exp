@@ -13,6 +13,21 @@ SESSIONS_DIR = Path(__file__).resolve().parent / "data" / "sessions"
 RAW_QUESTIONS_DIR = INTERVIEW_REPO_PATH / "面试原始问题"
 
 
+def _resolve_session_path(session_id: str) -> Path | None:
+    """根据 session_id 查找会话文件（兼容新旧命名格式）。
+    
+    新格式: YYYYMMDD_HHMMSS_{id}.json
+    旧格式: {id}.json
+    """
+    old_path = SESSIONS_DIR / f"{session_id}.json"
+    if old_path.exists():
+        return old_path
+    candidates = list(SESSIONS_DIR.glob(f"*_{session_id}.json"))
+    if candidates:
+        return candidates[0]
+    return None
+
+
 def export_session_questions(session_id: str, filename: str = None, rewrite: bool = False) -> tuple[Path, int]:
     """
     从会话中提取 interview 模式的用户问题，生成标准问题列表文件。
@@ -29,9 +44,9 @@ def export_session_questions(session_id: str, filename: str = None, rewrite: boo
         FileNotFoundError: 会话不存在
         ValueError: 没有找到面试问题
     """
-    # 1. 读取会话
-    session_path = SESSIONS_DIR / f"{session_id}.json"
-    if not session_path.exists():
+    # 1. 读取会话（兼容新旧命名格式）
+    session_path = _resolve_session_path(session_id)
+    if not session_path:
         raise FileNotFoundError(f"会话不存在: {session_id}")
     
     with open(session_path, "r", encoding="utf-8") as f:

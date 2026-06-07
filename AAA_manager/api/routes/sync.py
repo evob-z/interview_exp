@@ -245,8 +245,8 @@ class PipelineRequest(BaseModel):
 @router.post("/session-pipeline/{session_id}")
 async def session_pipeline(session_id: str, req: PipelineRequest = PipelineRequest()):
     """
-    会话一条龙处理：导出 → 复盘 → 入库
-    复用现有工具链
+    会话一条龙处理：导出（含 LLM 改写）
+    复盘和入库功能暂时注释
     """
     from exporter import export_session_questions
 
@@ -261,47 +261,47 @@ async def session_pipeline(session_id: str, req: PipelineRequest = PipelineReque
         results["status"] = "partial"
         return results
 
-    output_path_str = str(output_path)
+    # output_path_str = str(output_path)
 
-    # Step 2: 复盘
-    try:
-        valid, error_msg = reviewer.validate_review_input(output_path_str)
-        if valid:
-            review_output_dir = Path(str(config.INTERVIEW_REPO_PATH)) / config.REVIEW_OUTPUT_DIR
-            review_output_dir.mkdir(parents=True, exist_ok=True)
-            review_result = reviewer.generate_review_file(
-                source_file=output_path_str,
-                output_dir=str(review_output_dir),
-            )
-            results["steps"].append({
-                "step": "review", "status": "ok",
-                "file": str(Path(review_result.output_file).name),
-                "top_concerns": review_result.top_concerns[:3] if review_result.top_concerns else []
-            })
-        else:
-            results["steps"].append({"step": "review", "status": "skipped", "reason": error_msg})
-    except Exception as e:
-        results["steps"].append({"step": "review", "status": "error", "error": str(e)})
+    # # Step 2: 复盘
+    # try:
+    #     valid, error_msg = reviewer.validate_review_input(output_path_str)
+    #     if valid:
+    #         review_output_dir = Path(str(config.INTERVIEW_REPO_PATH)) / config.REVIEW_OUTPUT_DIR
+    #         review_output_dir.mkdir(parents=True, exist_ok=True)
+    #         review_result = reviewer.generate_review_file(
+    #             source_file=output_path_str,
+    #             output_dir=str(review_output_dir),
+    #         )
+    #         results["steps"].append({
+    #             "step": "review", "status": "ok",
+    #             "file": str(Path(review_result.output_file).name),
+    #             "top_concerns": review_result.top_concerns[:3] if review_result.top_concerns else []
+    #         })
+    #     else:
+    #         results["steps"].append({"step": "review", "status": "skipped", "reason": error_msg})
+    # except Exception as e:
+    #     results["steps"].append({"step": "review", "status": "error", "error": str(e)})
 
-    # Step 3: 入库
-    try:
-        valid, error_msg = archiver.validate_archive_input(output_path_str)
-        if valid:
-            questions_data = _parse_structured_questions(output_path_str)
-            if questions_data:
-                source_label = Path(output_path_str).stem
-                archive_result = archiver.archive_questions(questions_data, source_label)
-                results["steps"].append({
-                    "step": "archive", "status": "ok",
-                    "archived_count": len(archive_result.archived_questions),
-                    "skipped_count": len(archive_result.skipped_duplicates),
-                })
-            else:
-                results["steps"].append({"step": "archive", "status": "skipped", "reason": "无法解析出问题"})
-        else:
-            results["steps"].append({"step": "archive", "status": "skipped", "reason": error_msg})
-    except Exception as e:
-        results["steps"].append({"step": "archive", "status": "error", "error": str(e)})
+    # # Step 3: 入库
+    # try:
+    #     valid, error_msg = archiver.validate_archive_input(output_path_str)
+    #     if valid:
+    #         questions_data = _parse_structured_questions(output_path_str)
+    #         if questions_data:
+    #             source_label = Path(output_path_str).stem
+    #             archive_result = archiver.archive_questions(questions_data, source_label)
+    #             results["steps"].append({
+    #                 "step": "archive", "status": "ok",
+    #                 "archived_count": len(archive_result.archived_questions),
+    #                 "skipped_count": len(archive_result.skipped_duplicates),
+    #             })
+    #         else:
+    #             results["steps"].append({"step": "archive", "status": "skipped", "reason": "无法解析出问题"})
+    #     else:
+    #         results["steps"].append({"step": "archive", "status": "skipped", "reason": error_msg})
+    # except Exception as e:
+    #     results["steps"].append({"step": "archive", "status": "error", "error": str(e)})
 
     results["status"] = "ok"
     return results

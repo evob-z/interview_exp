@@ -1,0 +1,238 @@
+{
+  "main": {
+    "id": "2d2a6045ff6fe010",
+    "type": "split",
+    "children": [
+      {
+        "id": "7398de7f73c3e587",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b403ac6dd6c96053",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "问题库/八股.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "八股"
+            }
+          },
+          {
+            "id": "f1b3e6cd9f495543",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "问题库/项目-compliance_checker.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "项目-compliance_checker"
+            }
+          }
+        ],
+        "currentTab": 1
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "7b810d0d1d160639",
+    "type": "split",
+    "children": [
+      {
+        "id": "786802932597c9ff",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c6d7cf97099f4206",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "1e429600c2f01220",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "168542f27b255494",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "3a10da40597abfd6",
+    "type": "split",
+    "children": [
+      {
+        "id": "5310f2cbedd9539e",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "46210101892e6762",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "问题库/项目-compliance_checker.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "项目-compliance_checker 的反向链接列表"
+            }
+          },
+          {
+            "id": "f7bbea384ab3fec9",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "出链"
+            }
+          },
+          {
+            "id": "7803314ba3c053e6",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "ddc78f4cebcf7c60",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "ffd2c3b929ed3ab1",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false
+    }
+  },
+  "active": "f1b3e6cd9f495543",
+  "lastOpenFiles": [
+    "AAA_manager/data/sessions/20260601_184949_1d715246.json",
+    "问题库/AI_Coding.md",
+    "面试原始问题/美团_大厂_260507_一面技术.md",
+    "面试原始问题/阿里虎鲸文娱_大厂_260507_一面技术.md",
+    "问题库/项目-compliance_checker.md",
+    "问题库/项目-Agent_SFT_SHENWEI.md",
+    "面试原始问题/字节跳动_大厂_260513_技术一面.md",
+    "面试原始问题/蚂蚁_大厂_260509_一面技术.md",
+    "面试原始问题/京东_大厂_260520_一面.md",
+    "问题库/八股.md",
+    "面试原始问题/华为_大厂_260520_一面.md",
+    "面试原始问题/创新奇智_中厂_260305_技术.md",
+    "面试原始问题/北京智能知识数据科技_小厂_260121_技术.md",
+    "问题库/项目-law_sea.md",
+    "AAA_manager/data/sessions/20260601_144815_cf0a780a.json",
+    "AAA_manager/data/sessions/20260531_220626_849e4d93.json",
+    "AAA_manager/__pycache__/preparer.cpython-311.pyc",
+    "AAA_manager/api/routes/__pycache__/prepare.cpython-311.pyc",
+    "AAA_manager/core/__pycache__/asr_xunfei.cpython-311.pyc",
+    "AAA_manager/api/routes/__pycache__/asr.cpython-311.pyc",
+    "AAA_manager/api/routes/__pycache__/stats.cpython-311.pyc",
+    "AAA_manager/__pycache__/reviewer.cpython-311.pyc",
+    "AAA_manager/__pycache__/archiver.cpython-311.pyc",
+    "AAA_manager/__pycache__/extractor.cpython-311.pyc",
+    "未命名.canvas",
+    "暂时不用/蚂蚁_大厂_260423_一面技术.md",
+    "蚂蚁一面反问录音.md",
+    "AAA_manager/logs/notepad_20260526_160103_字节跳动_260513.md",
+    "AAA_manager/logs/reflect_20260526_160103_字节跳动_260513.md",
+    "AAA_manager/logs/reflect_20260526_160056_字节跳动_260513.md",
+    "AAA_manager/logs/notepad_20260526_160056_字节跳动_260513.md",
+    "AAA_manager/logs/notepad_20260526_154653_字节跳动_260513.md",
+    "AAA_manager/logs/reflect_20260526_154653_字节跳动_260513.md",
+    "AAA_manager/logs/reflect_20260526_154646_字节跳动_260513.md",
+    "AAA_manager/logs/notepad_20260526_154646_字节跳动_260513.md",
+    "AAA_manager/logs/reflect_20260526_154539_字节跳动_260513.md",
+    "AAA_manager/logs/notepad_20260526_154539_字节跳动_260513.md"
+  ]
+}

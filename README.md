@@ -19,6 +19,7 @@
 - **会话管理**：多会话支持，每个会话独立存储为 JSON 文件
 - **智能辅助**：网络搜索增强、追问预测、分层项目理解、用户画像分析
 - **岗位备战**：联网搜 JD + LLM 出题，写入题库供模拟面试检索
+- **Obsidian 知识管理**：自动打 frontmatter 元数据 + 每题 mastery 掌握度标记 + wikilink 知识图谱关联，支持 Obsidian Graph View 可视化与 Dataview 薄弱点查询
 
 ---
 
@@ -42,6 +43,9 @@
 | 空对话自动清理 | 启动时自动删除无消息空会话（保护 60 秒内新建） | 自动 |
 | 历史对话批量处理 | 删除 / 一条龙（导出 → 复盘 → 入库）历史会话 | Web 左侧边栏 |
 | 会话导出 | 从 session 导出面试问题（支持 LLM 上下文感知改写） | CLI `export-session` |
+| Obsidian 知识图谱 | wikilink 双向链接 + Graph View 可视化知识点关联 | Obsidian UI |
+| 掌握度追踪 | 复盘后自动打 `mastery::` 标记 + 复习时间记录 | 自动（reflector） |
+| 元数据增强 | 面试/预测文件自动打 YAML frontmatter（company/date/round 等） | 自动（preparer/reflector） |
 
 ---
 
@@ -62,6 +66,7 @@ interview_exp/
 │   ├── app.py main.py          # Web / CLI 入口
 │   ├── config.py llm_client.py # 配置 / LLM 调用
 │   ├── extractor.py archiver.py reviewer.py reflector.py preparer.py
+│   ├── frontmatter_utils.py obsidian_reader.py # Obsidian 元数据读写 + CLI 加速层
 │   ├── core/                   # web_searcher.py / asr_xunfei.py / prepare_agent.py
 │   ├── .env.example            # 环境变量模板
 │   ├── projects.yaml.example   # 项目元信息模板（单一真相源）
@@ -362,7 +367,7 @@ pre-commit install
 
 ## 技术栈
 
-Python 3.11 · FastAPI + Uvicorn · OpenAI SDK（DeepSeek / Qwen 兼容）· PydanticAI（反思 Agent）· websockets（讯飞 ASR）· pdfplumber · openpyxl · httpx · GitPython · python-dotenv · PyYAML
+Python 3.11 · FastAPI + Uvicorn · OpenAI SDK（DeepSeek / Qwen 兼容）· PydanticAI（反思 Agent）· websockets（讯飞 ASR）· pdfplumber · openpyxl · httpx · GitPython · python-dotenv · PyYAML（frontmatter 读写 + Obsidian 元数据）
 
 ---
 
