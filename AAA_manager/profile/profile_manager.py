@@ -493,7 +493,7 @@ class ProfileManager:
                 f"  近期改善: {json.dumps(growth.get('recent_improvements', []), ensure_ascii=False)}\n"
                 f"  当前重点: {json.dumps(growth.get('current_focus', []), ensure_ascii=False)}\n\n"
                 f"求职进展: 已投递{app_stats.get('total_applied', 0)}家，"
-                f"完成面试{len(history)}场\n"
+                f"完成面试{len(history)}场（请使用以上精确数字，不要自行估算）\n"
             )
 
             messages = [

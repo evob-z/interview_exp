@@ -193,33 +193,45 @@ def generate_answer(question_text: str, category: str, source_label: str) -> dic
         {"role": "user", "content": user_content},
     ]
 
-    # 4. 调用 LLM
-    try:
-        response_text = llm_client.chat_completion(
-            messages=messages,
-            temperature=0.7,
-            max_tokens=2048,
-            response_format={"type": "json_object"},
-        )
+    # 4. 调用 LLM（最多 3 次重试）
+    max_retries = 3
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response_text = llm_client.chat_completion(
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048,
+                response_format={"type": "json_object"},
+            )
 
-        # 解析 JSON
-        data = json.loads(response_text)
-        points = data.get("points", [])
-        speech = data.get("speech", "")
+            # 解析 JSON
+            data = json.loads(response_text)
+            points = data.get("points", [])
+            speech = data.get("speech", "")
 
-        if not points or not speech:
-            logger.warning(f"LLM 返回内容不完整: points={len(points)}, speech={bool(speech)}")
-            return {"points": points or ["待补充"], "speech": speech or "待补充"}
+            if not points or not speech:
+                logger.warning(f"LLM 返回内容不完整: points={len(points)}, speech={bool(speech)}")
+                return {"points": points or ["待补充"], "speech": speech or "待补充"}
 
-        return {"points": points, "speech": speech}
+            return {"points": points, "speech": speech}
 
-    except json.JSONDecodeError as e:
-        logger.error(f"LLM 返回 JSON 解析失败: {e}", exc_info=True)
-        logger.debug(f"原始返回内容: {response_text[:500]}")
-        return {"points": [], "speech": ""}
-    except Exception as e:
-        logger.error(f"生成回答失败: {e}", exc_info=True)
-        return {"points": [], "speech": ""}
+        except json.JSONDecodeError as e:
+            last_error = e
+            logger.warning(f"JSON 解析失败 (第 {attempt}/{max_retries} 次): {e}")
+            if attempt < max_retries:
+                # 追加纠错提示后重试
+                messages.append({
+                    "role": "user",
+                    "content": "你的上一次回复不是合法的 JSON，请确保输出严格的 JSON 格式，key 和字符串值需用双引号包裹。",
+                })
+            else:
+                logger.error(f"JSON 解析最终失败: {last_error}", exc_info=True)
+                logger.debug(f"原始返回内容: {response_text[:500]}")
+                return {"points": [], "speech": ""}
+        except Exception as e:
+            logger.error(f"生成回答失败: {e}", exc_info=True)
+            return {"points": [], "speech": ""}
 
 
 # ──────────────────────────────────────────────
@@ -474,8 +486,10 @@ def archive_questions(
 
         pending_index += 1
 
-        # 确定目标文件
+        # 确定目标文件（归一化：LLM 可能省略"项目-"前缀，先补全再查 MAP）
         target_filename = CATEGORY_FILE_MAP.get(category)
+        if not target_filename and category and not category.startswith("项目-"):
+            target_filename = CATEGORY_FILE_MAP.get(f"项目-{category}")
         if not target_filename:
             # 项目类分类（项目-xxx）即使未在 yaml 注册也按约定派生文件名
             if category and category.startswith("项目-"):

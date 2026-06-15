@@ -71,11 +71,7 @@ def _extract_category_from_tag(text: str) -> tuple[str, str]:
     tag = match.group(1)
     clean_text = text[match.end():].strip()
 
-    # 多项目标签取第一个
-    first_project = tag.split("/")[0].strip()
-
-    # 映射到 category
-    category = f"项目-{first_project}"
+    category = tag.split("/")[0].strip()
     return category, clean_text
 
 
