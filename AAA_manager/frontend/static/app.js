@@ -372,7 +372,7 @@
 
         // 流式完成后触发追问轮询
         if (currentSessionId) {
-            setTimeout(() => pollFollowups(currentSessionId), 2000);
+            setTimeout(() => pollFollowups(currentSessionId), 4000);
         }
     }
 
@@ -387,12 +387,13 @@
 
         // 触发追问轮询
         if (currentSessionId) {
-            setTimeout(() => pollFollowups(currentSessionId), 2000);
+            setTimeout(() => pollFollowups(currentSessionId), 4000);
         }
     }
 
     // --- Followup Prediction ---
     async function pollFollowups(sessionId) {
+        // 最多轮询 5 次，间隔 5 秒（之前 2s 太频、会刷屏 app.log）
         for (let i = 0; i < 5; i++) {
             try {
                 const data = await apiGet(`/api/followup/${sessionId}`);
@@ -401,7 +402,7 @@
                     return;
                 }
             } catch (e) { /* ignore */ }
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 5000));
         }
     }
 
@@ -700,7 +701,7 @@
                     <div class="history-question">${s.title}</div>
                     <div class="history-meta">${s.updated_at.slice(5, 16).replace('T', ' ')} · ${s.message_count}条</div>
                     <div class="history-actions">
-                        <button class="history-action-btn process-btn" title="一条龙处理（提取→复盘→入库）">⚡</button>
+                        <button class="history-action-btn process-btn" title="问题提取">⚡</button>
                         <button class="history-action-btn delete-btn" title="删除会话">🗑️</button>
                     </div>
                 `;
@@ -1033,7 +1034,7 @@
         }
 
         modal.style.display = 'none';
-        showToast('开始一条龙处理...');
+        showToast('开始提取问题...');
 
         try {
             const res = await fetch(`/api/sync/session-pipeline/${sessionId}`, {
@@ -1045,7 +1046,7 @@
             const data = await res.json();
 
             // 构建结果消息
-            let msg = '⚡ **一条龙处理完成**\n\n';
+            let msg = '⚡ **问题提取完成**\n\n';
             data.steps.forEach(step => {
                 const icon = step.status === 'ok' ? '✅' : step.status === 'skipped' ? '⏭️' : '❌';
                 const stepName = {extract: '问题抽取', review: '面试复盘', archive: '问题入库'}[step.step];
@@ -1059,7 +1060,7 @@
             });
 
             addMessage('system', msg);
-            showToast('一条龙处理完成');
+            showToast('问题提取完成');
             loadStats();
         } catch (err) {
             showError('处理失败: ' + err.message);

@@ -51,6 +51,10 @@ class WebSearcher:
     # 公共搜索接口
     # ------------------------------------------------------------------
 
+    # query 长度上限（字符数）——Tavily 等接口对 query 长度敏感，超长会 400
+    MAX_QUERY_CHARS = 300
+    MIN_QUERY_CHARS = 2
+
     async def search(self, query: str, max_results: int = 5) -> list[dict]:
         """
         执行搜索
@@ -64,6 +68,18 @@ class WebSearcher:
         """
         if not self.enabled:
             return []
+
+        # 入口净化：strip + 长度截断 + 最小长度检查
+        original_len = len(query) if query else 0
+        query = (query or "").strip()
+        if len(query) < self.MIN_QUERY_CHARS:
+            logger.info(f"搜索跳过：query 过短 (len={len(query)})")
+            return []
+        if len(query) > self.MAX_QUERY_CHARS:
+            logger.warning(
+                f"query 超长已截断: {original_len} -> {self.MAX_QUERY_CHARS} 字符"
+            )
+            query = query[: self.MAX_QUERY_CHARS]
 
         start_time = time.time()
         results: list[dict] = []

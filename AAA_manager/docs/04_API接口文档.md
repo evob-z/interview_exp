@@ -1,6 +1,6 @@
 # API 接口文档
 
-> 版本：v1.0 | 最后更新：2026-05-17 | 状态：初稿
+> 版本：v1.1 | 最后更新：2026-05-17 | 状态：已更新
 
 ## 1. 概述
 
@@ -249,14 +249,16 @@ data: {"type": "done"}
 
 ### POST /api/prepare
 
-触发岗位预测题生成。
+触发岗位预测题生成（Agent 自主决策：搜 JD → 读简历/项目 → 结合画像 → 出题 → 自评 → 写入 `岗位预测/`）。
 
 **请求体**：
 ```json
 {
-  "company": "字节跳动",
-  "position": "AI安全",
-  "date": "260520"
+  "company": "京东",
+  "position": "后端开发工程师",
+  "department": "CHO体系-企业信息化部",
+  "date": "260520",
+  "count": 20
 }
 ```
 
@@ -266,14 +268,29 @@ data: {"type": "done"}
 |------|------|------|------|
 | company | string | 是 | 公司名称 |
 | position | string | 是 | 岗位名称 |
+| department | string | 否 | 部门/团队名（可选），如 `CHO体系-企业信息化部` |
 | date | string | 否 | 面试日期（YYMMDD格式），默认当天 |
+| count | integer | 否 | 期望题数，默认读取 `PREP_QUESTION_COUNT` 配置 |
 
 **响应**：
 ```json
 {
-  "status": "success",
-  "output_file": "岗位预测/字节跳动_AI安全_260520.md",
-  "question_count": 15
+  "status": "ok",
+  "message": "生成完成：共 15 题",
+  "company": "京东",
+  "position": "后端开发工程师",
+  "department": "CHO体系-企业信息化部",
+  "date": "260520",
+  "output_file": "岗位预测/京东_CHO体系-企业信息化部_后端开发工程师_260520.md",
+  "output_filename": "京东_CHO体系-企业信息化部_后端开发工程师_260520.md",
+  "question_count": 15,
+  "jd_snippet_count": 14,
+  "jd_source_count": 14,
+  "elapsed_sec": 65.4,
+  "used_agent": true,
+  "agent_iterations": 3,
+  "quality_score": 0.82,
+  "hint": "已自动纳入模拟面试检索，可直接搜索复习"
 }
 ```
 

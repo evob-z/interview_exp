@@ -12,6 +12,35 @@
 
 ---
 
+## [2026-05-26] Obsidian 元数据层集成 — 文档同步 + 数据回填
+
+| 文档 | 类型 | 摘要 |
+|------|------|------|
+| README.md | 更新 | 新增 Obsidian 知识管理核心价值、功能概览、仓库结构 |
+| 01_需求文档.md | 更新 | 新增 FR-016~018：元数据标记、掌握度追踪、知识图谱关联 |
+| 05_部署配置文档.md | 更新 | 新增 PyYAML 依赖 + Obsidian CLI 可选依赖 |
+| 07_测试策略文档.md | 更新 | 新增 frontmatter_utils / reflector mastery 测试覆盖 |
+| scripts/backfill_frontmatter.py | 新增 | 存量数据回填脚本：inline 元数据 + wikilink 转换 + frontmatter 补打 |
+| .qoder/agents/code-reviewer.md | 更新 | 新增 §9 任务完成度检查（SPEC 交付物核对、文档同步验证） |
+| .qoder/agents/test-reviewer.md | 更新 | 新增 §6 任务完成度检查（测试覆盖 vs SPEC 范围核对） |
+
+---
+
+## [2026-05-26] Obsidian 元数据层集成（代码实现）
+
+| 文档 | 类型 | 摘要 |
+|------|------|------|
+| 08_Obsidian元数据层集成方案.md | 新增 | SPEC：frontmatter 元数据层设计，覆盖知识图谱/掌握度/时间追踪 |
+| 03_系统架构设计.md | 更新 | 新增 `frontmatter_utils.py` 和 `obsidian_reader.py` 到基础设施层 |
+| frontmatter_utils.py | 新增 | YAML frontmatter 读写 + Dataview inline 字段操作（纯 Python） |
+| obsidian_reader.py | 新增 | Obsidian CLI 可选加速读取层，含降级路径 |
+| preparer.py | 更新 | 岗位预测文件生成后自动打 frontmatter（company/position/date 等） |
+| reflector.py | 更新 | 新 QuestionItem schema + mastery 打标 + `_format_transcript` 修复 |
+| archiver.py | 更新 | 来源行格式从纯文本升级为 `[[wikilink]]` |
+| knowledge/question_bank.py | 更新 | `_extract_source` 增加 wikilink 括号剥离逻辑 |
+
+---
+
 ## [2026-05-17] 文档体系初始化
 
 | 文档 | 类型 | 摘要 |
@@ -24,6 +53,62 @@
 | 06_开发规范文档.md | 新增 | 代码风格、提交规范和协作流程初稿 |
 | 07_测试策略文档.md | 新增 | 测试范围、方法和质量标准初稿 |
 | CHANGELOG.md | 新增 | 文档变更记录机制建立 |
+
+---
+
+## [2026-05-17] 岗位预测 Agent 重构 + 部门字段
+
+### 代码层改动
+
+| 文件 | 类型 | 摘要 |
+|------|------|------|
+| `core/prepare_agent.py` | 新增 | 手写 ReAct Loop（OpenAI function calling），8工具 + submit_final 终结，替代 Pydantic AI 方案 |
+| `preparer.py` | 更新 | `parse_spec` 支持四元组解析（公司/岗位/日期/部门）；`PrepareResult` / `prepare_interview` / `_legacy_prepare` / `_build_output_filename` 全链路透传 `department` |
+| `main.py` | 更新 | `cmd_prepare` 解包四元组；argparse 新增 `--department`；epilog 示例更新 |
+| `api/routes/prepare.py` | 更新 | `PrepareRequest` 加 `department`；响应补全 12 字段 |
+| `requirements.txt` | 更新 | 移除 `pydantic-ai-slim`，改为零新增依赖方案 |
+| `tests/unit/test_prepare_agent.py` | 重写 | 6 测试全过（含 `submit_final` / fallback / agent_meta 覆盖） |
+
+### 文档同步
+
+| 01_需求文档.md | 更新 | 岗位预测功能描述扩展（Agent 自主决策、部门可选字段、ReAct 闭环） |
+| 02_技术选型报告.md | 更新 | 新增 §2.5 Agent 层选型（手写 ReAct Loop vs Pydantic AI vs LangChain）；章节号重编号 |
+| 03_系统架构设计.md | 更新 | core/ 模块表加 `prepare_agent.py`；AI 层描述更新 |
+| 04_API接口文档.md | 更新 | `/api/prepare` 请求体补 `department`/`count`，响应补全 12 字段 |
+| 05_部署配置文档.md | 更新 | 配置项表新增 `PREP_AGENT_MAX_ITERS` / `PREP_AGENT_FALLBACK` |
+| 07_测试策略文档.md | 更新 | 补充 `prepare_agent` 测试覆盖 |
+
+---
+
+## [2026-05-18] 面试反思 Agent 重构（PydanticAI 双 Agent）
+
+### 代码层改动
+
+| 文件 | 类型 | 摘要 |
+|------|------|------|
+| `reflector.py` | 重写 | 全部重写：PydanticAI 双 Agent（Conversation + Summary）+ 渐进式披露 tools（lookup_project_doc / search_project_doc / list_project_tier）+ 5 维度覆盖度评分停止策略 |
+| `prompts/reflect_agent_system.md` | 新增 | Conversation Agent 提示词：维度定义、提问策略、停止条件 |
+| `prompts/reflect_summary_system.md` | 新增 | Summary Agent 提示词：6 字段输出、review_content ≥100 字硬约束 |
+| `prompts/reflect_system.md` | 删除 | 旧版 prompt 废弃 |
+| `prompts/reflect_analyze_system.md` | 删除 | 旧版 prompt 废弃 |
+| `requirements.txt` | 更新 | 新增 `pydantic-ai>=1.97.0` |
+| `config.py` | 更新 | 新增 `REFLECT_MAX_ROUNDS`(8) / `REFLECT_COVERAGE_THRESHOLD`(70) |
+| `main.py` | 更新 | `cmd_sync` 新增 `--reflect` 开关；reflect 模式下流水线重排为 extract→reflect→review→archive，复盘后更新画像 |
+| `reviewer.py` | 更新 | `generate_review_file()` 新增 `reflection_context` 可选参数 |
+| `tests/unit/test_reflector.py` | 新增 | 22 个测试用例（覆盖度停止 / max_rounds / /stop / 异常降级 / 辅助函数） |
+
+### 核心特性
+- **双 Agent 架构**：Conversation Agent（多轮提问 + 项目文档 tools）+ Summary Agent（汇总为结构化反思）
+- **渐进式披露**：项目背景仅注入文件清单（~200 字），Agent 通过 PydanticAI tools 按需查阅
+- **维度覆盖度停止**：5 维度 0-100 评分，全部 ≥70 自动停止，支持软底线回调
+- **零回归**：不带 `--reflect` 保持原 extract→archive→review 流程
+
+### 文档同步
+| 01_需求文档.md | 更新 | 新增面试反思交互功能需求描述 |
+| 03_系统架构设计.md | 更新 | 模块表新增 `reflector.py`；sync 数据流补充 --reflect 分支 |
+| 05_部署配置文档.md | 更新 | 依赖清单新增 pydantic-ai；配置项表新增反思配置项；CLI 命令补充 --reflect |
+| .env.example | 更新 | 新增反思配置段 |
+| README.md | 更新 | 目录速查更新 |
 
 ---
 

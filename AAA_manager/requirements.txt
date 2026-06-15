@@ -1,17 +1,23 @@
-openai>=1.0.0
-gitpython>=3.1.0
-python-dotenv>=1.0.0
-pyyaml>=6.0
-fastapi>=0.100.0
-uvicorn>=0.23.0
-pdfplumber>=0.9.0
-openpyxl>=3.1.0
-httpx>=0.24.0,<0.28
-websockets>=12.0
+openai>=2.0.0,<3.0
+gitpython>=3.1.0,<4.0
+python-dotenv>=1.0.0,<2.0
+pyyaml>=6.0,<7.0
+fastapi>=0.100.0,<1.0
+uvicorn>=0.23.0,<1.0
+pdfplumber>=0.9.0,<1.0
+openpyxl>=3.1.0,<4.0
+httpx>=0.27.0,<1.0
+websockets>=12.0,<17.0
 
 # --- agentic ---
-# 岗位预测使用手写 ReAct Loop，直接复用 openai SDK 的 function calling，无额外依赖
+# 岗位预测使用手写 ReAct Loop，直接复用 openai SDK 的 function calling
+pydantic-ai>=1.97.0
+
+# --- semantic matching ---
+sentence-transformers>=5.0,<6.0
+transformers>=4.41.0,<4.50
 
 # --- testing ---
-pytest>=8.0
-pytest-mock>=3.12
+pytest>=8.0,<10.0
+pytest-asyncio>=0.24.0,<2.0
+pytest-mock>=3.12,<4.0
