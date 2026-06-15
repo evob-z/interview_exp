@@ -577,76 +577,121 @@ async def test_reflect_summary_failure_fallback(sample_interview_file, mocker):
 
 
 # ──────────────────────────────────────────────
-# _enhance_mastery_from_summary
+# _enhance_mastery_from_summary（语义匹配版）
 # ──────────────────────────────────────────────
 
-def test_enhance_mastery_writes_inline(tmp_path, monkeypatch):
-    """有 poorly_answered_qids → 写入 mastery:: weak 到问题库文件。"""
+_MOCK_QUESTIONS = [
+    {"id": 1, "text": "自我介绍如何准备", "category_suggestion": "八股"},
+    {"id": 2, "text": "Python GIL 是什么", "category_suggestion": "八股"},
+    {"id": 3, "text": "装饰器原理", "category_suggestion": "八股"},
+]
+
+
+def test_enhance_mastery_writes_inline(tmp_path, monkeypatch, mocker):
+    """语义匹配成功 → 写入 mastery 到问题库文件。"""
     import config
 
-    # 隔离：问题库指向 tmp_path
-    qb = tmp_path / "问题库"
-    qb.mkdir()
-    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb)
+    qb_dir = tmp_path / "问题库"
+    qb_dir.mkdir()
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb_dir)
     monkeypatch.setattr(config, "CATEGORY_FILE_MAP", {"八股": "八股.md"})
 
-    # 创建问题库文件，包含 Q2 和 Q3
-    qb_file = qb / "八股.md"
+    # 问题库文件（包含不同 qid 的题目，验证跨编号匹配）
+    qb_file = qb_dir / "八股.md"
     qb_file.write_text(
-        "---\ntitle: 八股\n---\n\n"
-        "## Q1：自我介绍如何准备\n内容略\n\n"
-        "## Q2：Python GIL 是什么\nGIL 是全局解释器锁\n\n"
-        "## Q3：装饰器原理\n装饰器本质是闭包\n",
+        "## Q10：自我介绍如何准备\n"
+        "内容略\n\n"
+        "## Q20：Python GIL 是什么\n"
+        "GIL 是全局解释器锁\n\n"
+        "## Q30：装饰器原理\n"
+        "装饰器本质是闭包\n",
         encoding="utf-8",
     )
 
+    # Mock QuestionBank.search 返回匹配结果
+    def mock_search(query, top_k=5, boost_categories=None):
+        mapping = {
+            "自我介绍如何准备": [{"id": 10, "text": "自我介绍如何准备", "category": "八股", "score": 15.0}],
+            "Python GIL 是什么": [{"id": 20, "text": "Python GIL 是什么", "category": "八股", "score": 14.0}],
+            "装饰器原理": [{"id": 30, "text": "装饰器原理", "category": "八股", "score": 12.0}],
+        }
+        return mapping.get(query, [])
+
+    mocker.patch(
+        "AAA_manager.knowledge.question_bank.QuestionBank.search",
+        mock_search,
+    )
+
     summary = _make_summary_with_qids()
-    _enhance_mastery_from_summary(summary)
+    _enhance_mastery_from_summary(summary, _MOCK_QUESTIONS)
 
     content = qb_file.read_text(encoding="utf-8")
-    # Q2 应该是 weak
-    assert "mastery:: weak" in content
-    # Q3 也应该是 weak
+    # Q10 应该是 mastered（来自 well_answered Q1）
+    assert "mastery:: mastered" in content
+    # Q20 应该是 weak（来自 poorly_answered Q2）
     parts = content.split("## Q")
-    q3_block = [p for p in parts if p.startswith("3")][0]
-    assert "mastery:: weak" in q3_block
-    # Q1 不应被标记（well_answered → mastered，但因为 category 也是"八股"，
-    # 它的 mastery 应该被写入到文件中的 Q1 块）
-    q1_block = [p for p in parts if p.startswith("1")][0]
-    assert "mastery:: mastered" in q1_block
+    q20_block = [p for p in parts if p.startswith("20")][0]
+    assert "mastery:: weak" in q20_block
+    # Q30 应该是 weak（来自 poorly_answered Q3）
+    q30_block = [p for p in parts if p.startswith("30")][0]
+    assert "mastery:: weak" in q30_block
+
+
+def test_enhance_mastery_low_score_skip(tmp_path, monkeypatch, mocker):
+    """语义匹配分数低于阈值 → 不写入。"""
+    import config
+
+    qb_dir = tmp_path / "问题库"
+    qb_dir.mkdir()
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb_dir)
+    monkeypatch.setattr(config, "CATEGORY_FILE_MAP", {"八股": "八股.md"})
+
+    qb_file = qb_dir / "八股.md"
+    qb_file.write_text("## Q1：完全不相关的问题\n内容\n", encoding="utf-8")
+
+    # 搜索返回低分结果
+    mocker.patch(
+        "AAA_manager.knowledge.question_bank.QuestionBank.search",
+        return_value=[{"id": 1, "text": "完全不相关", "category": "八股", "score": 3.0}],
+    )
+
+    summary = _make_summary_with_qids()
+    _enhance_mastery_from_summary(summary, _MOCK_QUESTIONS)
+
+    # 不应有任何 mastery 写入
+    content = qb_file.read_text(encoding="utf-8")
+    assert "mastery::" not in content
 
 
 def test_enhance_mastery_empty_qids(tmp_path, monkeypatch):
-    """qids 为空 → 不写任何内容（不抛异常）。"""
+    """qids 为空 → 不写任何内容，不抛异常。"""
     import config
 
-    qb = tmp_path / "问题库"
-    qb.mkdir()
-    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb)
+    qb_dir = tmp_path / "问题库"
+    qb_dir.mkdir()
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb_dir)
     monkeypatch.setattr(config, "CATEGORY_FILE_MAP", {"八股": "八股.md"})
 
-    qb_file = qb / "八股.md"
+    qb_file = qb_dir / "八股.md"
     original = "## Q1：测试\n内容\n"
     qb_file.write_text(original, encoding="utf-8")
 
     summary = _make_summary()  # qids 为空
-    _enhance_mastery_from_summary(summary)
+    _enhance_mastery_from_summary(summary, _MOCK_QUESTIONS)
 
     assert qb_file.read_text(encoding="utf-8") == original
 
 
-def test_enhance_mastery_unknown_category(tmp_path, monkeypatch):
-    """category 不在 CATEGORY_FILE_MAP → 静默跳过，不写入任何文件。"""
+def test_enhance_mastery_unknown_category(tmp_path, monkeypatch, mocker):
+    """category 不在 CATEGORY_FILE_MAP → 静默跳过。"""
     import config
 
-    # 隔离 config：问题库指向 tmp，CATEGORY_FILE_MAP 不含目标分类
-    qb = tmp_path / "问题库"
-    qb.mkdir()
-    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb)
+    qb_dir = tmp_path / "问题库"
+    qb_dir.mkdir()
+    monkeypatch.setattr(config, "QUESTION_BANK_PATH", qb_dir)
     monkeypatch.setattr(config, "CATEGORY_FILE_MAP", {"八股": "八股.md"})
 
-    # 创建问题库文件，用于验证未被修改
-    qb_file = qb / "八股.md"
+    qb_file = qb_dir / "八股.md"
     original = "## Q1：测试问题\n内容\n"
     qb_file.write_text(original, encoding="utf-8")
 
@@ -664,9 +709,7 @@ def test_enhance_mastery_unknown_category(tmp_path, monkeypatch):
         ),
     )
 
-    _enhance_mastery_from_summary(summary)
-
-    # 不应抛异常，且文件内容不变
+    _enhance_mastery_from_summary(summary, _MOCK_QUESTIONS)
     assert qb_file.read_text(encoding="utf-8") == original
 
 
@@ -675,14 +718,11 @@ def test_enhance_mastery_import_error(monkeypatch):
     import sys
     from pathlib import Path
 
-    # 清除可能被 test_frontmatter_utils 缓存的模块
     monkeypatch.delitem(sys.modules, "frontmatter_utils", raising=False)
 
-    # 隔离 config 避免意外写入真实文件
     import config
     monkeypatch.setattr(config, "QUESTION_BANK_PATH", Path("/nonexistent"))
 
-    # 模拟 import 失败
     import builtins
     original_import = builtins.__import__
 
@@ -694,5 +734,4 @@ def test_enhance_mastery_import_error(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", mock_import)
 
     summary = _make_summary_with_qids()
-    # 不应抛异常
-    _enhance_mastery_from_summary(summary)
+    _enhance_mastery_from_summary(summary, _MOCK_QUESTIONS)

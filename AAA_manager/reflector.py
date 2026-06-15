@@ -250,9 +250,9 @@ def _parse_questions_from_file(file_path: str) -> list[dict]:
         if m:
             tag = m.group(1)
             clean = text[m.end():].strip()
-            # 多项目标签取第一个
-            pn = tag.split("/")[0].strip()
-            return f"项目-{pn}", clean
+            # 多项目标签取第一个，标签值即类别名，不做前缀加工
+            category = tag.split("/")[0].strip()
+            return category, clean
         return None, text
 
     q_pattern = re.compile(r"^#{2,4}\s*Q(\d+)[：:]\s*(.+)", re.MULTILINE)
@@ -820,44 +820,94 @@ def _format_for_reviewer(summary: ReflectionSummary) -> str:
 # 主流程
 # ═══════════════════════════════════════════════
 
-def _enhance_mastery_from_summary(summary_output: ReflectionSummary) -> None:
-    """从 Summary Agent 结构化输出中提取评估，写入问题库每题 inline 元数据。
+def _enhance_mastery_from_summary(
+    summary_output: ReflectionSummary,
+    questions: list[dict],
+) -> None:
+    """从 Summary Agent 结构化输出中提取评估，通过语义匹配定位问题库题目后写入 mastery。
 
-    遍历 poorly_answered_qids / well_answered_qids，
-    通过 CATEGORY_FILE_MAP 定位目标文件，调用 upsert_inline_metadata 写入。
+    面试文件的 qid 和问题库的 qid 是两套独立的编号，不能直接对应。
+    这里用面试问题文本去问题库做语义搜索，相似度 > 0.7 才写入。
     """
     try:
         from frontmatter_utils import upsert_inline_metadata
+        from knowledge.question_bank import QuestionBank
     except ImportError:
+        return
+
+    # 构建面试 qid → text 查找表
+    interview_qids: dict[int, str] = {}
+    for q in questions:
+        interview_qids[q.get("id", 0)] = q.get("text", "")
+
+    if not interview_qids:
+        return
+
+    # 初始化问题库语义搜索（懒加载 embedding 模型）
+    try:
+        bank = QuestionBank(str(config.QUESTION_BANK_PATH))
+        bank.load()
+    except Exception as e:
+        logger.debug(f"问题库加载失败，跳过 mastery 打标: {e}")
         return
 
     today = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    for item in summary_output.poorly_answered_qids:
+    def _match_and_write(item, mastery_level: str) -> bool:
+        """对单个 QuestionItem 做语义匹配 + 写入"""
         target_file = config.CATEGORY_FILE_MAP.get(item.category)
         if not target_file:
-            continue
-        file_path = config.QUESTION_BANK_PATH / target_file
-        try:
-            upsert_inline_metadata(file_path, item.qid, {
-                "mastery": "weak",
-                "last_reviewed": today,
-            })
-        except Exception:
-            logger.debug(f"Q{item.qid} mastery 写入失败", exc_info=True)
+            logger.debug(f"分类 {item.category} 未在 CATEGORY_FILE_MAP 中配置")
+            return False
 
-    for item in summary_output.well_answered_qids:
-        target_file = config.CATEGORY_FILE_MAP.get(item.category)
-        if not target_file:
-            continue
+        query_text = interview_qids.get(item.qid, "")
+        if not query_text:
+            logger.debug(f"面试 Q{item.qid} 无文本内容")
+            return False
+
+        results = bank.search(query_text, top_k=3, boost_categories=[item.category])
+        if not results:
+            logger.debug(f"语义匹配: Q{item.qid}({item.category}) 无匹配")
+            return False
+
+        best = results[0]
+        # score 是混合分（关键词+语义），需要单独做纯语义阈值判断
+        if best["score"] < 7.0:  # 语义分 *10 + 关键词分，7.0≈余弦0.7
+            logger.debug(
+                f"语义匹配: Q{item.qid} → {best['text'][:40]}... "
+                f"score={best['score']:.2f}（低于阈值）"
+            )
+            return False
+
         file_path = config.QUESTION_BANK_PATH / target_file
         try:
-            upsert_inline_metadata(file_path, item.qid, {
-                "mastery": "mastered",
+            upsert_inline_metadata(file_path, best["id"], {
+                "mastery": mastery_level,
                 "last_reviewed": today,
             })
+            logger.debug(
+                f"mastery 写入: Q{item.qid}(面试) → Q{best['id']}(问题库) "
+                f"[{mastery_level}] score={best['score']:.2f}"
+            )
+            return True
         except Exception:
             logger.debug(f"Q{item.qid} mastery 写入失败", exc_info=True)
+            return False
+
+    weak_count = 0
+    for item in summary_output.poorly_answered_qids:
+        if _match_and_write(item, "weak"):
+            weak_count += 1
+
+    master_count = 0
+    for item in summary_output.well_answered_qids:
+        if _match_and_write(item, "mastered"):
+            master_count += 1
+
+    if weak_count or master_count:
+        logger.info(f"mastery 打标完成: weak={weak_count}, mastered={master_count}")
+    else:
+        logger.debug("mastery 打标: 无匹配项")
 
 
 def _save_reflect_log(
@@ -1128,7 +1178,7 @@ async def reflect_interview_async(
 
     # ── Obsidian 增强：每题 mastery 打标 ──
     try:
-        _enhance_mastery_from_summary(summary_output)
+        _enhance_mastery_from_summary(summary_output, questions)
     except Exception:
         logger.debug("mastery 打标失败（不影响主流程）", exc_info=True)
 
