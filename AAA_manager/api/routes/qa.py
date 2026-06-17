@@ -164,8 +164,11 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     project_results = []
     try:
         project_results = project_reader.search_in_projects(question) or []
+        logger.info(f"项目文档检索: query='{question[:40]}' → {len(project_results)} 条结果")
     except Exception as e:
         logger.warning(f"项目文档搜索失败: {e}")
+
+    logger.info(f"_build_context: qa={len(qa_results)} proj={len(project_results)} boost={boost}")
 
     # 2.5 当检测到明确项目意图时，过滤项目文档结果，只保留目标项目
     if boost and project_results:
