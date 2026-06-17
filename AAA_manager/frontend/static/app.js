@@ -264,7 +264,6 @@
         addMessage('user', question);
         chatInput.value = '';
         autoResizeInput();
-        setInputEnabled(false);
 
         try {
             await streamQuestion(question);
@@ -278,7 +277,6 @@
             }
         }
 
-        setInputEnabled(true);
         // 刷新历史记录列表
         loadHistory();
     }
