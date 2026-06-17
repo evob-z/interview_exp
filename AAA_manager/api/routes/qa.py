@@ -156,16 +156,22 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     # 1. 搜索问题库
     qa_results = []
     try:
-        boost, matched_aliases = _detect_project_intent(question)
+        boost, _ = _detect_project_intent(question)
         allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
         qa_results = question_bank.search(question, top_k=5, boost_categories=boost or allowed_cats)
     except Exception as e:
         logger.error(f"问题库搜索失败: {e}")
 
-    # 2. 搜索项目文档：用命中的别名逐个检索，合并去重
+    # 2. 搜索项目文档：命中项目后，用该项目全部别名搜索（含中英文变体，确保文档命中）
     project_results = []
     try:
-        search_terms = matched_aliases if matched_aliases else [question]
+        if boost:
+            boost_cat_set = set(boost)
+            search_terms = [a for a, c in config.PROJECT_ALIASES.items() if c in boost_cat_set]
+            if not search_terms:
+                search_terms = [question]
+        else:
+            search_terms = [question]
         seen: set[tuple] = set()
         for term in search_terms:
             for pr in (project_reader.search_in_projects(term) or []):
