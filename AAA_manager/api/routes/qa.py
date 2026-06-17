@@ -24,6 +24,7 @@ router = APIRouter()
 
 # 加载 QA System Prompt 模板
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
+_QA_PROMPT_CACHE: str | None = None  # 惰性缓存，首次加载后存内存
 
 # 混合匹配阈值：仅当 score >= 此值（即强匹配）时才直接返回已有回答
 # 纯关键词≤10分 + 语义加成(cosine×10)，低于阈值走 LLM 路径
@@ -43,18 +44,23 @@ def detect_project_boost(question: str) -> list[str] | None:
 
 
 def _load_qa_prompt() -> str:
-    """加载问答 system prompt 模板"""
+    """加载问答 system prompt 模板（惰性缓存，运行时只读一次）"""
+    global _QA_PROMPT_CACHE
+    if _QA_PROMPT_CACHE is not None:
+        return _QA_PROMPT_CACHE
     prompt_file = _PROMPTS_DIR / "qa_system.md"
     try:
         if prompt_file.exists():
-            return prompt_file.read_text(encoding="utf-8")
+            _QA_PROMPT_CACHE = prompt_file.read_text(encoding="utf-8")
+            return _QA_PROMPT_CACHE
     except Exception as e:
         logger.error(f"加载 QA prompt 失败: {e}")
     # Fallback
-    return (
+    _QA_PROMPT_CACHE = (
         "你是一个专业的面试教练助手。根据用户的问题和知识库内容，给出面试级别的回答。\n\n"
         "## 知识库上下文\n\n{context}\n\n## 用户画像\n\n{profile_summary}"
     )
+    return _QA_PROMPT_CACHE
 
 
 # ─── 过渡话术模板 ───
@@ -368,33 +374,46 @@ async def ask_question_stream(req: QARequest):
             yield f"data: {_guide_msg}\n\n"
             await asyncio.sleep(0)
 
-            # 2. 网络搜索（异步，不阻塞事件循环）
-            search_snippets = ""
+            # 2. 并发：网络搜索 + 本地检索（互不依赖，重叠 I/O 等待时间）
+            loop = asyncio.get_event_loop()
+
+            async def _search_web():
+                try:
+                    from api.deps import web_searcher
+                    return await web_searcher.search(req.question, max_results=3)
+                except Exception as e:
+                    logger.error(f"网络搜索失败: {e}")
+                    return []
+
+            web_task = asyncio.create_task(_search_web())
+            local_future = loop.run_in_executor(None, lambda: _build_messages(req.question, req.mode))
+
+            # 3. 构建 LLM 消息 + 等待网络搜索结果
             try:
-                from api.deps import web_searcher
-                search_results = await web_searcher.search(req.question, max_results=3)
-                if search_results:
-                    # 格式化搜索摘要
-                    search_snippets = "\U0001f4ce **相关资料：**\n"
-                    for sr in search_results[:3]:
-                        title = sr.get("title", "")
-                        content = sr.get("content", "")[:150]
-                        if title or content:
-                            search_snippets += f"- **{title}**: {content}\n"
-                    search_snippets += "\n---\n\n"
-                    # 输出搜索摘要给用户
-                    yield f"data: {json.dumps({'type': 'content', 'data': search_snippets}, ensure_ascii=False)}\n\n"
+                # 先等待本地检索（通常是瓶颈 ~4s），网络搜索可能已并行完成
+                messages, sources = await local_future
+                search_results = await web_task
             except Exception as e:
-                logger.error(f"网络搜索失败: {e}")
+                logger.error(f"检索构建失败: {e}")
+                err_msg = f"\n\n抱歉，生成回答时出错: {str(e)}"
+                yield f"data: {json.dumps({'type': 'content', 'data': err_msg}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
 
-            # 3. 构建 LLM 消息（在线程池，因为可能有同步IO）
+            # 格式化网络搜索摘要，输出给用户
+            search_snippets = ""
+            if search_results:
+                search_snippets = "\U0001f4ce **相关资料：**\n"
+                for sr in search_results[:3]:
+                    title = sr.get("title", "")
+                    content = sr.get("content", "")[:150]
+                    if title or content:
+                        search_snippets += f"- **{title}**: {content}\n"
+                search_snippets += "\n---\n\n"
+                yield f"data: {json.dumps({'type': 'content', 'data': search_snippets}, ensure_ascii=False)}\n\n"
+
+            # 4. LLM 流式输出（含历史上下文注入）
             try:
-                loop = asyncio.get_event_loop()
-                messages, sources = await loop.run_in_executor(
-                    None, lambda: _build_messages(req.question, req.mode)
-                )
-
-                # 多轮对话上下文截断
                 if req.session_id:
                     session = _load_session(req.session_id)
                     if session and session.get("messages"):

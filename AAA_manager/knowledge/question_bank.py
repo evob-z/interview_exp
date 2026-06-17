@@ -195,8 +195,11 @@ class QuestionBank:
         results = []
         query_lower = query.lower()
 
+        # 预计算查询的语义向量，避免在 _semantic_score 中每个题目重复编码（N→1）
+        query_emb = self._encode_query(query_lower)
+
         for q in self.questions:
-            score = self._compute_score(query_lower, q)
+            score = self._compute_score(query_lower, q, query_emb)
             if score > 0:
                 results.append({
                     "id": q["id"],
@@ -235,7 +238,7 @@ class QuestionBank:
 
         return results[:top_k]
 
-    def _compute_score(self, query: str, question: dict) -> float:
+    def _compute_score(self, query: str, question: dict, query_emb=None) -> float:
         """计算查询词与问题的混合匹配分数（关键词 + 语义）"""
         score = 0.0
         query_lower = query.lower()
@@ -267,7 +270,7 @@ class QuestionBank:
                     score += overlap_ratio * 3.0
 
         # 5. 语义向量相似度加成（杜绝"agent框架→可靠性评估"类误匹配）
-        sem_score = self._semantic_score(query_lower, question)
+        sem_score = self._semantic_score(query_lower, question, query_emb)
         if sem_score is not None:
             score += sem_score * 10.0
 
@@ -294,18 +297,36 @@ class QuestionBank:
             logger.warning(f"语义向量预计算失败，降级为纯关键词: {e}")
             self._embeddings.clear()
 
-    def _semantic_score(self, query: str, question: dict) -> float | None:
-        """计算查询与题目的余弦相似度，未启用语义匹配时返回 None"""
+    def _encode_query(self, query: str):
+        """编码查询文本为语义向量（仅一次），失败返回 None"""
         model = _get_embedding_model()
         if model is None:
             return None
+        try:
+            return model.encode([query], convert_to_numpy=True, show_progress_bar=False)[0]
+        except Exception as e:
+            logger.debug(f"查询向量编码失败: {e}")
+            return None
 
+    def _semantic_score(self, query: str, question: dict, query_emb=None) -> float | None:
+        """计算查询与题目的余弦相似度，未启用语义匹配时返回 None
+
+        Args:
+            query: 查询文本（仅 debug 用）
+            question: 题目字典，含预计算的 embedding
+            query_emb: 预先编码的查询向量，None 时回退到实时编码（兼容旧调用）
+        """
         cached_emb = self._embeddings.get(question["id"])
         if cached_emb is None:
             return None
 
+        # 兼容旧调用：未传入预编码向量时实时编码
+        if query_emb is None:
+            query_emb = self._encode_query(query)
+        if query_emb is None:
+            return None
+
         try:
-            query_emb = model.encode([query], convert_to_numpy=True, show_progress_bar=False)[0]
             # 余弦相似度
             dot = np.dot(query_emb, cached_emb)
             norm = np.linalg.norm(query_emb) * np.linalg.norm(cached_emb)
