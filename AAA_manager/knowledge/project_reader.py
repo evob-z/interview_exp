@@ -551,26 +551,16 @@ class ProjectReader:
                 continue
 
             content_lower = content.lower()
-            # 分词 OR 匹配：空格分隔的每个 token 任意命中即匹配
-            # 中文查询无空格 → 等价原整串匹配；别名注入后多 token → 各自命中
-            tokens = [t for t in query_lower.split() if len(t) >= 2]
-            match_token = None
-            for token in tokens:
-                if token in content_lower:
-                    match_token = token
-                    break
-            if match_token is None:
-                continue
-
-            idx = content_lower.find(match_token)
-            context = self._extract_context(content, idx, len(match_token))
-            results.append({
-                "project_name": project_name,
-                "tier": tier_num,
-                "file": file_info.get('path', ''),
-                "matched_content": content[idx:idx + len(match_token)],
-                "context": context,
-            })
+            if query_lower in content_lower:
+                idx = content_lower.find(query_lower)
+                context = self._extract_context(content, idx, len(query_lower))
+                results.append({
+                    "project_name": project_name,
+                    "tier": tier_num,
+                    "file": file_info.get('path', ''),
+                    "matched_content": content[idx:idx + len(query_lower)],
+                    "context": context,
+                })
 
         return results
 

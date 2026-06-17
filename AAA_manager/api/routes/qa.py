@@ -31,25 +31,19 @@ _QA_PROMPT_CACHE: str | None = None  # 惰性缓存，首次加载后存内存
 DIRECT_ANSWER_THRESHOLD = 9.5
 
 
-def detect_project_boost(question: str) -> list[str] | None:
-    """检测问题中的项目别名，返回需要加权的 category 列表"""
-    boost = set()
+def _detect_project_intent(question: str) -> tuple[list[str], list[str]]:
+    """检测问题中的项目意图，一次遍历返回 (categories, matched_aliases)"""
+    categories: set[str] = set()
+    aliases: list[str] = []
+    q_lower = question.lower()
     for alias, category in PROJECT_ALIASES.items():
-        if alias.lower() in question.lower():
+        if alias.lower() in q_lower:
             if isinstance(category, list):
-                boost.update(category)
+                categories.update(category)
             else:
-                boost.add(category)
-    return list(boost) if boost else None
-
-
-def _detect_project_aliases(question: str) -> list[str]:
-    """返回问题中命中的项目别名（用于文档检索关键词注入）"""
-    matched: list[str] = []
-    for alias in PROJECT_ALIASES:
-        if alias.lower() in question.lower():
-            matched.append(alias)
-    return matched
+                categories.add(category)
+            aliases.append(alias)
+    return (list(categories) if categories else [], aliases)
 
 
 def _load_qa_prompt() -> str:
@@ -162,24 +156,24 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     # 1. 搜索问题库
     qa_results = []
     try:
-        boost = detect_project_boost(question)
-        # 始终按 projects.yaml 中配置的分类过滤，避免检索到未启用的题库（如八股/AI_Coding）
+        boost, matched_aliases = _detect_project_intent(question)
         allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
         qa_results = question_bank.search(question, top_k=5, boost_categories=boost or allowed_cats)
     except Exception as e:
         logger.error(f"问题库搜索失败: {e}")
 
-    # 2. 搜索项目文档（纯子串匹配，需用项目别名增强命中率）
+    # 2. 搜索项目文档：用命中的别名逐个检索，合并去重
     project_results = []
     try:
-        search_query = question
-        if boost:
-            # 只注入问题中实际命中的别名，不在问题中的不参与检索
-            alias_terms = _detect_project_aliases(question)
-            if alias_terms:
-                search_query = " ".join(alias_terms) + " " + question
-        project_results = project_reader.search_in_projects(search_query) or []
-        logger.info(f"项目文档检索: query='{search_query[:60]}' → {len(project_results)} 条结果")
+        search_terms = matched_aliases if matched_aliases else [question]
+        seen: set[tuple] = set()
+        for term in search_terms:
+            for pr in (project_reader.search_in_projects(term) or []):
+                key = (pr.get("project_name"), pr.get("file"))
+                if key not in seen:
+                    seen.add(key)
+                    project_results.append(pr)
+        logger.info(f"项目文档检索: terms={search_terms} → {len(project_results)} 条结果")
     except Exception as e:
         logger.warning(f"项目文档搜索失败: {e}")
 
@@ -292,7 +286,7 @@ async def ask_question(req: QARequest):
 
     try:
         # 先尝试直接匹配（跳过无内容的空壳条目）
-        boost = detect_project_boost(req.question)
+        boost, _ = _detect_project_intent(req.question)
         allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
         qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost or allowed_cats)
         for candidate in qa_results:
@@ -343,7 +337,7 @@ async def ask_question_stream(req: QARequest):
         raise HTTPException(status_code=400, detail="问题不能为空")
 
     # 第一步：快速搜索问题库（<50ms）
-    boost = detect_project_boost(req.question)
+    boost, _ = _detect_project_intent(req.question)
     allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
     qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost or allowed_cats)
     # 找第一个有内容且分数达标的结果（跳过空壳重复条目）
