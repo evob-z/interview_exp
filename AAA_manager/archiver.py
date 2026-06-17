@@ -478,7 +478,7 @@ def archive_questions(
     for q in questions:
         q_id = q.get("id", 0)
         q_text = q.get("text", "").strip()
-        category = q.get("category_suggestion", "八股")
+        category = q.get("category_suggestion", "工程基础")
 
         if not q_text:
             logger.warning(f"跳过空问题 (id={q_id})")
@@ -496,9 +496,9 @@ def archive_questions(
                 target_filename = f"{category}.md"
             else:
                 logger.warning(
-                    f"未知分类 '{category}'，归入八股。问题: {q_text[:30]}..."
+                    f"未知分类 '{category}'，归入工程基础。问题: {q_text[:30]}..."
                 )
-                target_filename = CATEGORY_FILE_MAP.get("八股", "八股.md")
+                target_filename = CATEGORY_FILE_MAP.get("工程基础", "工程基础.md")
 
         target_path = str(Path(QUESTION_BANK_PATH) / target_filename)
 

@@ -127,7 +127,7 @@ for _g in PROJECTS_META.get("generic_categories", []):
     if _g.get("name"):
         CATEGORY_FILE_MAP[_g["name"]] = f"{_g['name']}.md"
 
-# archiver 内部已有 fallback（CATEGORY_FILE_MAP.get("八股", "八股.md")），此处不需要兜底
+# archiver 内部已有 fallback（CATEGORY_FILE_MAP.get("工程基础", "工程基础.md")），此处不需要兜底
 # CATEGORY_FILE_MAP 仅包含 projects.yaml 中显式配置的分类
 
 # 若 .env 未提供 PROJECT_CONFIGS，则从 projects.yaml 自动派生
