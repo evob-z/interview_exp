@@ -551,16 +551,30 @@ class ProjectReader:
                 continue
 
             content_lower = content.lower()
-            if query_lower in content_lower:
-                idx = content_lower.find(query_lower)
-                context = self._extract_context(content, idx, len(query_lower))
-                results.append({
-                    "project_name": project_name,
-                    "tier": tier_num,
-                    "file": file_info.get('path', ''),
-                    "matched_content": content[idx:idx + len(query_lower)],
-                    "context": context,
-                })
+            # 先整串匹配，不命中时降级为分词 OR 匹配（自然语言+别名组合场景）
+            matched = query_lower in content_lower
+            if not matched:
+                tokens = [t for t in query_lower.split() if len(t) >= 2]
+                matched = any(token in content_lower for token in tokens)
+            if not matched:
+                continue
+
+            # 用第一个命中的 token 定位上下文
+            match_token = query_lower
+            if matched and query_lower not in content_lower:
+                for token in tokens:
+                    if token in content_lower:
+                        match_token = token
+                        break
+            idx = content_lower.find(match_token)
+            context = self._extract_context(content, idx, len(match_token))
+            results.append({
+                "project_name": project_name,
+                "tier": tier_num,
+                "file": file_info.get('path', ''),
+                "matched_content": content[idx:idx + len(match_token)],
+                "context": context,
+            })
 
         return results
 

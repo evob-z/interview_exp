@@ -160,14 +160,18 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     except Exception as e:
         logger.error(f"问题库搜索失败: {e}")
 
-    # 2. 搜索项目文档（纯子串匹配，需用项目关键词增强命中率）
+    # 2. 搜索项目文档（纯子串匹配，需用项目别名增强命中率）
     project_results = []
     try:
         search_query = question
         if boost:
-            # 提取项目名作为关键词注入搜索词，解决自然语言问法不命中的问题
-            proj_keywords = " ".join(cat.replace("项目-", "") for cat in boost)
-            search_query = f"{proj_keywords} {question}"
+            # 提取项目别名（文档中实际出现的词），非项目内部名
+            alias_terms: list[str] = []
+            for alias, cat in config.PROJECT_ALIASES.items():
+                if cat in boost:
+                    alias_terms.append(alias)
+            if alias_terms:
+                search_query = " ".join(alias_terms) + " " + question
         project_results = project_reader.search_in_projects(search_query) or []
         logger.info(f"项目文档检索: query='{search_query[:60]}' → {len(project_results)} 条结果")
     except Exception as e:
