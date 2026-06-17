@@ -27,8 +27,8 @@ _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 _QA_PROMPT_CACHE: str | None = None  # 惰性缓存，首次加载后存内存
 
 # 混合匹配阈值：仅当 score >= 此值（即强匹配）时才直接返回已有回答
-# 纯关键词≤10分 + 语义加成(cosine×10)，低于阈值走 LLM 路径
-DIRECT_ANSWER_THRESHOLD = 9.5
+# 设为极高值，基本总是走 LLM 路径让大模型推理，而非照搬预制答案
+DIRECT_ANSWER_THRESHOLD = 99.0
 
 
 def _detect_project_intent(question: str) -> tuple[list[str], list[str]]:
@@ -159,6 +159,22 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
         boost, _ = _detect_project_intent(question)
         allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
         qa_results = question_bank.search(question, top_k=5, boost_categories=boost or allowed_cats)
+        # 焦点词重排：提取查询末尾的英文关键词（通常代表提问焦点），
+        # 命中的条目优先展示，避免被高频通用词（如"AI Coding"）挤到后面
+        import re
+        focus_words = re.findall(r'[a-z]{3,}', question.lower())
+        if focus_words:
+            last_focus = focus_words[-1]  # 查询末尾词权重最高
+            def _focus_boost(r: dict) -> float:
+                b = 0.0
+                text_lower = (r.get("text", "") + " " + " ".join(r.get("points", []))).lower()
+                if last_focus in text_lower:
+                    b += 3.0
+                # 倒数第二个词也检查（如 "AI Coding" → "coding" 是倒数第二）
+                if len(focus_words) >= 2 and focus_words[-2] in text_lower:
+                    b += 1.0
+                return b
+            qa_results.sort(key=lambda r: r["score"] + _focus_boost(r), reverse=True)
     except Exception as e:
         logger.error(f"问题库搜索失败: {e}")
 
