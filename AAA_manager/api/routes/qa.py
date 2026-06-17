@@ -43,6 +43,15 @@ def detect_project_boost(question: str) -> list[str] | None:
     return list(boost) if boost else None
 
 
+def _detect_project_aliases(question: str) -> list[str]:
+    """返回问题中命中的项目别名（用于文档检索关键词注入）"""
+    matched: list[str] = []
+    for alias in PROJECT_ALIASES:
+        if alias.lower() in question.lower():
+            matched.append(alias)
+    return matched
+
+
 def _load_qa_prompt() -> str:
     """加载问答 system prompt 模板（惰性缓存，运行时只读一次）"""
     global _QA_PROMPT_CACHE
@@ -165,11 +174,8 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     try:
         search_query = question
         if boost:
-            # 提取项目别名（文档中实际出现的词），非项目内部名
-            alias_terms: list[str] = []
-            for alias, cat in config.PROJECT_ALIASES.items():
-                if cat in boost:
-                    alias_terms.append(alias)
+            # 只注入问题中实际命中的别名，不在问题中的不参与检索
+            alias_terms = _detect_project_aliases(question)
             if alias_terms:
                 search_query = " ".join(alias_terms) + " " + question
         project_results = project_reader.search_in_projects(search_query) or []
