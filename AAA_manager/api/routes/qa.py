@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from api.deps import question_bank, project_reader, profile_manager
+from api.deps import question_bank, project_reader
 from api.routes.history import append_message, _load_session
 from api.routes.followup import async_generate_followups
 from llm_client import chat_completion, chat_completion_stream
@@ -61,7 +61,7 @@ def _load_qa_prompt() -> str:
     # Fallback
     _QA_PROMPT_CACHE = (
         "你是一个专业的面试教练助手。根据用户的问题和知识库内容，给出面试级别的回答。\n\n"
-        "## 知识库上下文\n\n{context}\n\n## 用户画像\n\n{profile_summary}"
+        "## 知识库上下文\n\n{context}"
     )
     return _QA_PROMPT_CACHE
 
@@ -269,17 +269,9 @@ def _build_messages(question: str, mode: str) -> tuple[list[dict], list[dict]]:
     # 获取 context
     context_text, sources = _build_context(question)
 
-    # 获取画像摘要
-    try:
-        profile_summary = profile_manager.get_profile_summary()
-    except Exception:
-        profile_summary = "画像尚未初始化"
-
     # 构建 system prompt
     template = _load_qa_prompt()
-    system_prompt = template.replace("{context}", context_text).replace(
-        "{profile_summary}", profile_summary
-    )
+    system_prompt = template.replace("{context}", context_text)
 
     # 用户消息附带 mode 提示
     mode_hint = {
