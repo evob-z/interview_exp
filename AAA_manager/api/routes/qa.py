@@ -460,8 +460,7 @@ async def ask_question_stream(req: QARequest):
                 try:
                     if req.session_id:
                         append_message(req.session_id, "user", req.question, mode=req.mode)
-                        complete_answer = search_snippets + full_answer
-                        append_message(req.session_id, "assistant", complete_answer, sources=[s.get("text", "") for s in sources] if sources else [])
+                        append_message(req.session_id, "assistant", full_answer, sources=[s.get("text", "") for s in sources] if sources else [])
                 except Exception:
                     pass
 
