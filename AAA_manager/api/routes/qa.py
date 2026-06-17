@@ -148,7 +148,9 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     qa_results = []
     try:
         boost = detect_project_boost(question)
-        qa_results = question_bank.search(question, top_k=5, boost_categories=boost)
+        # 始终按 projects.yaml 中配置的分类过滤，避免检索到未启用的题库（如八股/AI_Coding）
+        allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
+        qa_results = question_bank.search(question, top_k=5, boost_categories=boost or allowed_cats)
     except Exception as e:
         logger.error(f"问题库搜索失败: {e}")
 
@@ -267,7 +269,8 @@ async def ask_question(req: QARequest):
     try:
         # 先尝试直接匹配（跳过无内容的空壳条目）
         boost = detect_project_boost(req.question)
-        qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost)
+        allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
+        qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost or allowed_cats)
         for candidate in qa_results:
             if candidate["score"] < DIRECT_ANSWER_THRESHOLD:
                 break
@@ -317,7 +320,8 @@ async def ask_question_stream(req: QARequest):
 
     # 第一步：快速搜索问题库（<50ms）
     boost = detect_project_boost(req.question)
-    qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost)
+    allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
+    qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost or allowed_cats)
     # 找第一个有内容且分数达标的结果（跳过空壳重复条目）
     best_match = None
     for r in qa_results:
