@@ -19,6 +19,7 @@ coverage.xml
 
 # === 环境与敏感信息 ===
 AAA_manager/.env
+AAA_manager/.env.wxa
 AAA_manager/projects.yaml
 .env
 
@@ -32,6 +33,7 @@ AAA_manager/logs/reflect_*.md
 AAA_manager/logs/notepad_*.md
 
 # === 个人面经与知识库（隐私数据） ===
+面试/*
 岗位预测/*
 !岗位预测/.gitkeep
 问题库/*
@@ -61,9 +63,11 @@ temp/
 *.swp
 *.swo
 *.local
+AGENTS.md
 
 # === OS ===
 .DS_Store
 Thumbs.db
 Desktop.ini
 AAA_manager/.last_sync_time
+AAA_manager/data/.last_sync_time

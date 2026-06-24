@@ -33,7 +33,9 @@
 | `data/` | 会话与画像（gitignore） |
 | `logs/` | 运行日志（gitignore） |
 | `.env.example` | 环境变量模板 |
-| `projects.yaml.example` | 项目元信息模板（项目别名、文档路径、通用题库分类，单一真相源） |
+| `projects.yaml.example` | 项目元信息模板（匿名示例，不含真实项目） |
+| `projects.yaml.sample` | 完整配置模板，含 qa_tier1 示例和详细注释 |
+| `projects.yaml` | 本地项目元信息（单一真相源，已被 gitignore） |
 | `requirements.txt` | 依赖列表（含 pydantic-ai≥1.97.0） |
 
 ---
@@ -47,7 +49,9 @@ conda activate interview_exp
 cd AAA_manager
 pip install -r requirements.txt
 cp .env.example .env                       # 填入 API Key 与本地路径
-cp projects.yaml.example projects.yaml     # 填入你的项目别名与文档路径
+cp projects.yaml.sample projects.yaml       # 填入你的项目别名与文档路径
+# 或使用自定义配置文件
+# export PROJECTS_YAML_PATH=/path/to/my_projects.yaml  (在 .env 中设置)
 
 python app.py          # 启动 Web (http://127.0.0.1:8000)
 # 或

@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from api.deps import question_bank, project_reader, profile_manager
+from api.deps import question_bank, project_reader
 from api.routes.history import append_message, _load_session
 from api.routes.followup import async_generate_followups
 from llm_client import chat_completion, chat_completion_stream
@@ -24,37 +24,46 @@ router = APIRouter()
 
 # 加载 QA System Prompt 模板
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
+_QA_PROMPT_CACHE: str | None = None  # 惰性缓存，首次加载后存内存
 
 # 混合匹配阈值：仅当 score >= 此值（即强匹配）时才直接返回已有回答
-# 纯关键词≤10分 + 语义加成(cosine×10)，低于阈值走 LLM 路径
-DIRECT_ANSWER_THRESHOLD = 9.5
+# 设为极高值，基本总是走 LLM 路径让大模型推理，而非照搬预制答案
+DIRECT_ANSWER_THRESHOLD = 99.0
 
 
-def detect_project_boost(question: str) -> list[str] | None:
-    """检测问题中的项目别名，返回需要加权的 category 列表"""
-    boost = set()
+def _detect_project_intent(question: str) -> tuple[list[str], list[str]]:
+    """检测问题中的项目意图，一次遍历返回 (categories, matched_aliases)"""
+    categories: set[str] = set()
+    aliases: list[str] = []
+    q_lower = question.lower()
     for alias, category in PROJECT_ALIASES.items():
-        if alias.lower() in question.lower():
+        if alias.lower() in q_lower:
             if isinstance(category, list):
-                boost.update(category)
+                categories.update(category)
             else:
-                boost.add(category)
-    return list(boost) if boost else None
+                categories.add(category)
+            aliases.append(alias)
+    return (list(categories) if categories else [], aliases)
 
 
 def _load_qa_prompt() -> str:
-    """加载问答 system prompt 模板"""
+    """加载问答 system prompt 模板（惰性缓存，运行时只读一次）"""
+    global _QA_PROMPT_CACHE
+    if _QA_PROMPT_CACHE is not None:
+        return _QA_PROMPT_CACHE
     prompt_file = _PROMPTS_DIR / "qa_system.md"
     try:
         if prompt_file.exists():
-            return prompt_file.read_text(encoding="utf-8")
+            _QA_PROMPT_CACHE = prompt_file.read_text(encoding="utf-8")
+            return _QA_PROMPT_CACHE
     except Exception as e:
         logger.error(f"加载 QA prompt 失败: {e}")
     # Fallback
-    return (
+    _QA_PROMPT_CACHE = (
         "你是一个专业的面试教练助手。根据用户的问题和知识库内容，给出面试级别的回答。\n\n"
-        "## 知识库上下文\n\n{context}\n\n## 用户画像\n\n{profile_summary}"
+        "## 知识库上下文\n\n{context}"
     )
+    return _QA_PROMPT_CACHE
 
 
 # ─── 过渡话术模板 ───
@@ -147,17 +156,50 @@ def _build_context(question: str) -> tuple[str, list[dict]]:
     # 1. 搜索问题库
     qa_results = []
     try:
-        boost = detect_project_boost(question)
-        qa_results = question_bank.search(question, top_k=5, boost_categories=boost)
+        boost, _ = _detect_project_intent(question)
+        allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
+        qa_results = question_bank.search(question, top_k=5, boost_categories=boost or allowed_cats)
+        # 焦点词重排：提取查询末尾的英文关键词（通常代表提问焦点），
+        # 命中的条目优先展示，避免被高频通用词（如"AI Coding"）挤到后面
+        import re
+        focus_words = re.findall(r'[a-z]{3,}', question.lower())
+        if focus_words:
+            last_focus = focus_words[-1]  # 查询末尾词权重最高
+            def _focus_boost(r: dict) -> float:
+                b = 0.0
+                text_lower = (r.get("text", "") + " " + " ".join(r.get("points", []))).lower()
+                if last_focus in text_lower:
+                    b += 3.0
+                # 倒数第二个词也检查（如 "AI Coding" → "coding" 是倒数第二）
+                if len(focus_words) >= 2 and focus_words[-2] in text_lower:
+                    b += 1.0
+                return b
+            qa_results.sort(key=lambda r: r["score"] + _focus_boost(r), reverse=True)
     except Exception as e:
         logger.error(f"问题库搜索失败: {e}")
 
-    # 2. 搜索项目文档
+    # 2. 搜索项目文档：命中项目后，用该项目全部别名搜索（含中英文变体，确保文档命中）
     project_results = []
     try:
-        project_results = project_reader.search_in_projects(question) or []
+        if boost:
+            boost_cat_set = set(boost)
+            search_terms = [a for a, c in config.PROJECT_ALIASES.items() if c in boost_cat_set]
+            if not search_terms:
+                search_terms = [question]
+        else:
+            search_terms = [question]
+        seen: set[tuple] = set()
+        for term in search_terms:
+            for pr in (project_reader.search_in_projects(term) or []):
+                key = (pr.get("project_name"), pr.get("file"))
+                if key not in seen:
+                    seen.add(key)
+                    project_results.append(pr)
+        logger.info(f"项目文档检索: terms={search_terms} → {len(project_results)} 条结果")
     except Exception as e:
         logger.warning(f"项目文档搜索失败: {e}")
+
+    logger.info(f"_build_context: qa={len(qa_results)} proj={len(project_results)} boost={boost}")
 
     # 2.5 当检测到明确项目意图时，过滤项目文档结果，只保留目标项目
     if boost and project_results:
@@ -227,17 +269,9 @@ def _build_messages(question: str, mode: str) -> tuple[list[dict], list[dict]]:
     # 获取 context
     context_text, sources = _build_context(question)
 
-    # 获取画像摘要
-    try:
-        profile_summary = profile_manager.get_profile_summary()
-    except Exception:
-        profile_summary = "画像尚未初始化"
-
     # 构建 system prompt
     template = _load_qa_prompt()
-    system_prompt = template.replace("{context}", context_text).replace(
-        "{profile_summary}", profile_summary
-    )
+    system_prompt = template.replace("{context}", context_text)
 
     # 用户消息附带 mode 提示
     mode_hint = {
@@ -266,8 +300,9 @@ async def ask_question(req: QARequest):
 
     try:
         # 先尝试直接匹配（跳过无内容的空壳条目）
-        boost = detect_project_boost(req.question)
-        qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost)
+        boost, _ = _detect_project_intent(req.question)
+        allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
+        qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost or allowed_cats)
         for candidate in qa_results:
             if candidate["score"] < DIRECT_ANSWER_THRESHOLD:
                 break
@@ -316,8 +351,9 @@ async def ask_question_stream(req: QARequest):
         raise HTTPException(status_code=400, detail="问题不能为空")
 
     # 第一步：快速搜索问题库（<50ms）
-    boost = detect_project_boost(req.question)
-    qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost)
+    boost, _ = _detect_project_intent(req.question)
+    allowed_cats = list(config.CATEGORY_FILE_MAP.keys())
+    qa_results = question_bank.search(req.question, top_k=5, boost_categories=boost or allowed_cats)
     # 找第一个有内容且分数达标的结果（跳过空壳重复条目）
     best_match = None
     for r in qa_results:
@@ -364,33 +400,46 @@ async def ask_question_stream(req: QARequest):
             yield f"data: {_guide_msg}\n\n"
             await asyncio.sleep(0)
 
-            # 2. 网络搜索（异步，不阻塞事件循环）
-            search_snippets = ""
+            # 2. 并发：网络搜索 + 本地检索（互不依赖，重叠 I/O 等待时间）
+            loop = asyncio.get_event_loop()
+
+            async def _search_web():
+                try:
+                    from api.deps import web_searcher
+                    return await web_searcher.search(req.question, max_results=3)
+                except Exception as e:
+                    logger.error(f"网络搜索失败: {e}")
+                    return []
+
+            web_task = asyncio.create_task(_search_web())
+            local_future = loop.run_in_executor(None, lambda: _build_messages(req.question, req.mode))
+
+            # 3. 构建 LLM 消息 + 等待网络搜索结果
             try:
-                from api.deps import web_searcher
-                search_results = await web_searcher.search(req.question, max_results=3)
-                if search_results:
-                    # 格式化搜索摘要
-                    search_snippets = "\U0001f4ce **相关资料：**\n"
-                    for sr in search_results[:3]:
-                        title = sr.get("title", "")
-                        content = sr.get("content", "")[:150]
-                        if title or content:
-                            search_snippets += f"- **{title}**: {content}\n"
-                    search_snippets += "\n---\n\n"
-                    # 输出搜索摘要给用户
-                    yield f"data: {json.dumps({'type': 'content', 'data': search_snippets}, ensure_ascii=False)}\n\n"
+                # 先等待本地检索（通常是瓶颈 ~4s），网络搜索可能已并行完成
+                messages, sources = await local_future
+                search_results = await web_task
             except Exception as e:
-                logger.error(f"网络搜索失败: {e}")
+                logger.error(f"检索构建失败: {e}")
+                err_msg = f"\n\n抱歉，生成回答时出错: {str(e)}"
+                yield f"data: {json.dumps({'type': 'content', 'data': err_msg}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
 
-            # 3. 构建 LLM 消息（在线程池，因为可能有同步IO）
+            # 格式化网络搜索摘要，输出给用户
+            search_snippets = ""
+            if search_results:
+                search_snippets = "\U0001f4ce **相关资料：**\n"
+                for sr in search_results[:3]:
+                    title = sr.get("title", "")
+                    content = sr.get("content", "")[:150]
+                    if title or content:
+                        search_snippets += f"- **{title}**: {content}\n"
+                search_snippets += "\n---\n\n"
+                yield f"data: {json.dumps({'type': 'content', 'data': search_snippets}, ensure_ascii=False)}\n\n"
+
+            # 4. LLM 流式输出（含历史上下文注入）
             try:
-                loop = asyncio.get_event_loop()
-                messages, sources = await loop.run_in_executor(
-                    None, lambda: _build_messages(req.question, req.mode)
-                )
-
-                # 多轮对话上下文截断
                 if req.session_id:
                     session = _load_session(req.session_id)
                     if session and session.get("messages"):
@@ -460,8 +509,7 @@ async def ask_question_stream(req: QARequest):
                 try:
                     if req.session_id:
                         append_message(req.session_id, "user", req.question, mode=req.mode)
-                        complete_answer = search_snippets + full_answer
-                        append_message(req.session_id, "assistant", complete_answer, sources=[s.get("text", "") for s in sources] if sources else [])
+                        append_message(req.session_id, "assistant", full_answer, sources=[s.get("text", "") for s in sources] if sources else [])
                 except Exception:
                     pass
 

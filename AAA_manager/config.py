@@ -89,7 +89,7 @@ GIT_ENABLED = os.getenv("GIT_ENABLED", "false").lower() == "true"
 # 项目元信息（唯一真相源：projects.yaml）
 # 派生 PROJECT_ALIASES / CATEGORY_FILE_MAP / 兜底 PROJECT_CONFIGS
 # =============================================================================
-PROJECTS_FILE: Path = BASE_DIR / "projects.yaml"
+PROJECTS_FILE: Path = Path(os.getenv("PROJECTS_YAML_PATH", str(BASE_DIR / "projects.yaml")))
 
 
 def _load_projects_meta() -> dict:
@@ -127,8 +127,8 @@ for _g in PROJECTS_META.get("generic_categories", []):
     if _g.get("name"):
         CATEGORY_FILE_MAP[_g["name"]] = f"{_g['name']}.md"
 
-# 兜底：保证 "八股" 永远存在，避免 projects.yaml 缺失/未配置时 archiver 失败
-CATEGORY_FILE_MAP.setdefault("八股", "八股.md")
+# archiver 内部已有 fallback（CATEGORY_FILE_MAP.get("工程基础", "工程基础.md")），此处不需要兜底
+# CATEGORY_FILE_MAP 仅包含 projects.yaml 中显式配置的分类
 
 # 若 .env 未提供 PROJECT_CONFIGS，则从 projects.yaml 自动派生
 if not PROJECT_CONFIGS:

@@ -21,7 +21,3 @@
 ## 知识库上下文
 
 {context}
-
-## 用户画像
-
-{profile_summary}

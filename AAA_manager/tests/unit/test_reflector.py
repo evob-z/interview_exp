@@ -609,7 +609,7 @@ def test_enhance_mastery_writes_inline(tmp_path, monkeypatch, mocker):
     )
 
     # Mock QuestionBank.search 返回匹配结果
-    def mock_search(query, top_k=5, boost_categories=None):
+    def mock_search(self, query, top_k=5, boost_categories=None):
         mapping = {
             "自我介绍如何准备": [{"id": 10, "text": "自我介绍如何准备", "category": "八股", "score": 15.0}],
             "Python GIL 是什么": [{"id": 20, "text": "Python GIL 是什么", "category": "八股", "score": 14.0}],
@@ -618,7 +618,7 @@ def test_enhance_mastery_writes_inline(tmp_path, monkeypatch, mocker):
         return mapping.get(query, [])
 
     mocker.patch(
-        "AAA_manager.knowledge.question_bank.QuestionBank.search",
+        "knowledge.question_bank.QuestionBank.search",
         mock_search,
     )
 
@@ -651,7 +651,7 @@ def test_enhance_mastery_low_score_skip(tmp_path, monkeypatch, mocker):
 
     # 搜索返回低分结果
     mocker.patch(
-        "AAA_manager.knowledge.question_bank.QuestionBank.search",
+        "knowledge.question_bank.QuestionBank.search",
         return_value=[{"id": 1, "text": "完全不相关", "category": "八股", "score": 3.0}],
     )
 

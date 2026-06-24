@@ -46,6 +46,23 @@ def isolated_repo(tmp_path, monkeypatch):
     import archiver
     monkeypatch.setattr(archiver, "INTERVIEW_REPO_PATH", tmp_path)
     monkeypatch.setattr(archiver, "QUESTION_BANK_PATH", question_bank)
+    monkeypatch.setattr(
+        archiver,
+        "CATEGORY_FILE_MAP",
+        {
+            "AI_Coding": "AI_Coding.md",
+            "八股": "八股.md",
+            "工程基础": "八股.md",
+        },
+    )
+    monkeypatch.setattr(
+        archiver,
+        "generate_answer",
+        lambda question_text, category, source_label: {
+            "points": ["测试要点"],
+            "speech": "测试话术",
+        },
+    )
 
     import extractor
     monkeypatch.setattr(extractor, "INTERVIEW_REPO_PATH", tmp_path)
