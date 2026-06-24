@@ -1,5 +1,6 @@
 """question_bank.py 语义匹配单元测试。"""
 
+import hashlib
 import numpy as np
 import pytest
 
@@ -95,7 +96,8 @@ class _MockEmbeddingModel:
         self._basis: dict[int, np.ndarray] = {}
 
     def _get_vec(self, text: str) -> np.ndarray:
-        key = hash(text)
+        # 使用 md5 确定性哈希 + 小写归一化，确保同义文本（仅大小写不同）获得相同向量
+        key = int(hashlib.md5(text.lower().encode("utf-8")).hexdigest(), 16)
         if key not in self._basis:
             rng = np.random.RandomState(abs(key) % (2**31))
             vec = rng.randn(self.dim).astype(np.float32)
